@@ -20,6 +20,7 @@ app.use(bodyParser.json());  // Phân tích JSON trong body của request
 app.use(bodyParser.urlencoded({ extended: true }));  // Để phân tích dữ liệu URL-encoded (nếu cần)
 
 app.use(express.json()); // này để nhận file Json nhé
+
 app.use(cors());
 
 app.use("/api/auditlogs", auditRoutes);
