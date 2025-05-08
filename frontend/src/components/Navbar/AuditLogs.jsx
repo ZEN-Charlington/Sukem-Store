@@ -1,18 +1,26 @@
+// components/NavBar/AuditLogs.jsx
 import React, { useEffect, useState } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody,
   Table, Thead, Tbody, Tr, Th, Td,
-  Spinner, Alert, AlertIcon, Image, Flex
+  Spinner, Alert, AlertIcon, Image, Flex, Box, Text
 } from '@chakra-ui/react';
+import { formatVND } from '../../Utils/FormatUtils';
+import { useAuthStore } from '../../store/user';
+import { formatDateTime } from '../../utils/DateTimeUtils';
 
 const AuditLogs = ({ isOpen, onClose }) => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { hasPermission } = useAuthStore();
+
+  // Kiểm tra quyền - chỉ manager mới có thể xem logs
+  const hasRequiredPermission = hasPermission("manager");
 
   useEffect(() => {
-    if (isOpen) fetchAuditLogs();
-  }, [isOpen]);
+    if (isOpen && hasRequiredPermission) fetchAuditLogs();
+  }, [isOpen, hasRequiredPermission]);
 
   const fetchAuditLogs = async () => {
     setIsLoading(true); 
@@ -37,34 +45,6 @@ const AuditLogs = ({ isOpen, onClose }) => {
       setError("Lỗi kết nối với server.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Format giá tiền từ số sang định dạng VNĐ
-  const formatPrice = (amount) => {
-    if (!amount && amount !== 0) return "N/A";
-    return new Intl.NumberFormat('vi-VN', { 
-      style: 'currency', 
-      currency: 'VND',
-      maximumFractionDigits: 0
-    }).format(amount);
-  };
-  
-  // Format ngày từ timestamp sang định dạng DD/MM/YYYY
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "N/A";
-    try {
-      const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return "N/A";
-      
-      return new Intl.DateTimeFormat('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      }).format(date);
-    } catch (error) {
-      console.error("Lỗi định dạng ngày:", error);
-      return "N/A";
     }
   };
 
@@ -112,7 +92,7 @@ const AuditLogs = ({ isOpen, onClose }) => {
           )}
           {priceChange && (
             <div>
-              <strong>Giá tiền:</strong> {formatPrice(priceChange.old)} → {formatPrice(priceChange.new)}
+              <strong>Giá tiền:</strong> {formatVND(priceChange.old)} → {formatVND(priceChange.new)}
             </div>
           )}
           {imageChange && (
@@ -149,7 +129,7 @@ const AuditLogs = ({ isOpen, onClose }) => {
       <>
         <div><strong>Tên sản phẩm:</strong> {log.changes?.new?.name || log.changes?.old?.name || "Không xác định"}</div>
         <div>
-          <strong>Giá tiền:</strong> {formatPrice(log.changes?.new?.price || log.changes?.old?.price)}
+          <strong>Giá tiền:</strong> {formatVND(log.changes?.new?.price || log.changes?.old?.price)}
         </div>
         <div><strong>Hình ảnh:</strong>
           {/* Hiển thị hình ảnh */}
@@ -172,7 +152,16 @@ const AuditLogs = ({ isOpen, onClose }) => {
         <ModalHeader textAlign="center">Nhật ký chỉnh sửa</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          {isLoading ? (
+          {!hasRequiredPermission ? (
+            // Hiển thị thông báo khi không có quyền
+            <Alert status="error" variant="solid" borderRadius="md">
+              <AlertIcon />
+              <Box>
+                <Text fontWeight="bold">Không có quyền truy cập!</Text>
+                <Text>Tính năng này chỉ dành cho tài khoản có vai trò Quản lý.</Text>
+              </Box>
+            </Alert>
+          ) : isLoading ? (
             <Spinner size="xl" />
           ) : error ? (
             <Alert status="error"><AlertIcon />{error}</Alert>
@@ -197,7 +186,7 @@ const AuditLogs = ({ isOpen, onClose }) => {
                     </Td>
                     <Td style={{ wordWrap: 'break-word', maxWidth: '15%' }}>{log.user}</Td>
                     <Td style={{ wordWrap: 'break-word', maxWidth: '15%' }}>
-                      {formatDate(log.timestamp)}
+                      {formatDateTime(log.timestamp)}
                     </Td>
                     <Td style={{ wordWrap: 'break-word', maxWidth: '20%' }}>{getProductName(log)}</Td>
                     <Td style={{ wordWrap: 'break-word', maxWidth: '35%' }}>{renderDetailContent(log)}</Td>

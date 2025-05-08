@@ -1,3 +1,4 @@
+// components/NavBar/RevenueStatistics.jsx
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -18,9 +19,14 @@ import {
   StatNumber,
   StatHelpText,
   StatArrow,
-  useColorModeValue
+  useColorModeValue,
+  Alert,
+  AlertIcon,
+  Text,
+  Spinner
 } from '@chakra-ui/react';
 import { useReceiptStore } from '../../store/receipt';
+import { useAuthStore } from '../../store/user';
 import StatisticsChart from './RevStat/StatisticsChart';
 import HotProducts from './RevStat/HotProduct';
 
@@ -33,16 +39,20 @@ const RevenueStatistics = ({ isOpen, onClose }) => {
     previousPeriodGrowth: 0
   });
   const [loading, setLoading] = useState(true);
+  const { hasPermission } = useAuthStore();
 
   const { fetchReceipts } = useReceiptStore();
 
   const bgColor = useColorModeValue('white', 'gray.800');
   const cardBg = useColorModeValue('white', 'gray.700');
+  
+  // Kiểm tra quyền - chỉ manager mới có thể xem thống kê doanh thu
+  const hasRequiredPermission = hasPermission("manager");
 
   // Fetch receipts when modal opens
   useEffect(() => {
     const getReceipts = async () => {
-      if (!isOpen) return;
+      if (!isOpen || !hasRequiredPermission) return;
       
       setLoading(true);
       try {
@@ -64,7 +74,7 @@ const RevenueStatistics = ({ isOpen, onClose }) => {
     };
 
     getReceipts();
-  }, [isOpen, fetchReceipts]);
+  }, [isOpen, fetchReceipts, hasRequiredPermission]);
 
   // Process data when filter changes
   useEffect(() => {
@@ -241,56 +251,74 @@ const RevenueStatistics = ({ isOpen, onClose }) => {
         <ModalHeader>Thống kê doanh thu</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          {/* Filter */}
-          <Flex justifyContent="flex-end" mb={4}>
-            <Select 
-              value={filter} 
-              onChange={(e) => setFilter(e.target.value)} 
-              width="200px"
-            >
-              <option value="today">Hôm nay</option>
-              <option value="thisWeek">Tuần này</option>
-              <option value="thisMonth">Tháng này</option>
-              <option value="thisYear">Năm nay</option>
-            </Select>
-          </Flex>
+          {!hasRequiredPermission ? (
+            // Hiển thị thông báo khi không có quyền
+            <Alert status="error" variant="solid" borderRadius="md">
+              <AlertIcon />
+              <Box>
+                <Text fontWeight="bold">Không có quyền truy cập!</Text>
+                <Text>Tính năng này chỉ dành cho tài khoản có vai trò Quản lý.</Text>
+              </Box>
+            </Alert>
+          ) : loading ? (
+            <Box textAlign="center" py={10}>
+              <Spinner size="xl" />
+              <Text mt={4}>Đang tải dữ liệu...</Text>
+            </Box>
+          ) : (
+            <>
+              {/* Filter */}
+              <Flex justifyContent="flex-end" mb={4}>
+                <Select 
+                  value={filter} 
+                  onChange={(e) => setFilter(e.target.value)} 
+                  width="200px"
+                >
+                  <option value="today">Hôm nay</option>
+                  <option value="thisWeek">Tuần này</option>
+                  <option value="thisMonth">Tháng này</option>
+                  <option value="thisYear">Năm nay</option>
+                </Select>
+              </Flex>
 
-          {/* Cards */}
-          <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4} mb={6}>
-            <Stat p={4} borderRadius="lg" boxShadow="sm" bg={cardBg}>
-              <StatLabel>Tổng doanh thu</StatLabel>
-              <StatNumber>{formatCurrency(revenueData.total)}</StatNumber>
-              <StatHelpText>
-                <StatArrow type={revenueData.previousPeriodGrowth >= 0 ? "increase" : "decrease"} />
-                {Math.abs(revenueData.previousPeriodGrowth)}% so với {getPeriodLabel()}
-              </StatHelpText>
-            </Stat>
-            <Stat p={4} borderRadius="lg" boxShadow="sm" bg={cardBg}>
-              <StatLabel>Tổng đơn hàng</StatLabel>
-              <StatNumber>{revenueData.orderCount}</StatNumber>
-              <StatHelpText>
-                {revenueData.orderCount > 0 
-                  ? `Đơn hàng trung bình: ${formatCurrency(revenueData.total / revenueData.orderCount)}`
-                  : 'Chưa có đơn hàng'}
-              </StatHelpText>
-            </Stat>
-          </Grid>
+              {/* Cards */}
+              <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4} mb={6}>
+                <Stat p={4} borderRadius="lg" boxShadow="sm" bg={cardBg}>
+                  <StatLabel>Tổng doanh thu</StatLabel>
+                  <StatNumber>{formatCurrency(revenueData.total)}</StatNumber>
+                  <StatHelpText>
+                    <StatArrow type={revenueData.previousPeriodGrowth >= 0 ? "increase" : "decrease"} />
+                    {Math.abs(revenueData.previousPeriodGrowth)}% so với {getPeriodLabel()}
+                  </StatHelpText>
+                </Stat>
+              <Stat p={4} borderRadius="lg" boxShadow="sm" bg={cardBg}>
+                <StatLabel>Tổng đơn hàng</StatLabel>
+                <StatNumber>{revenueData.orderCount}</StatNumber>
+                <StatHelpText>
+                  {revenueData.orderCount > 0 
+                    ? `Đơn hàng trung bình: ${formatCurrency(revenueData.total / revenueData.orderCount)}`
+                    : 'Chưa có đơn hàng'}
+                </StatHelpText>
+              </Stat>
+            </Grid>
 
-          {/* Chart Component */}
-          <StatisticsChart filter={filter} receipts={receipts} />
+            {/* Chart Component */}
+            <StatisticsChart filter={filter} receipts={receipts} />
 
-          {/* Hot Products Component */}
-          <HotProducts receipts={receipts} />
-        </ModalBody>
+            {/* Hot Products Component */}
+            <HotProducts receipts={receipts} />
+          </>
+        )}
+      </ModalBody>
 
-        <ModalFooter>
-          <Button colorScheme="blue" mr={3} onClick={onClose}>
-            Đóng
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
-  );
+      <ModalFooter>
+        <Button colorScheme="blue" mr={3} onClick={onClose}>
+          Đóng
+        </Button>
+      </ModalFooter>
+    </ModalContent>
+  </Modal>
+);
 };
 
 export default RevenueStatistics;

@@ -1,4 +1,4 @@
-// user.model.js
+// models/user.model.js
 import mongoose from "mongoose";
 import validator from "validator";
 
@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, "Vui lòng nhập mật khẩu"],
     minlength: [6, "Mật khẩu phải có ít nhất 6 ký tự"]
+  },
+  role: {
+    type: String,
+    enum: ["manager", "worker"],
+    default: "worker"
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,

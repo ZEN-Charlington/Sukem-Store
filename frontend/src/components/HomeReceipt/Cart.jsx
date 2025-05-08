@@ -16,16 +16,7 @@ import {
   } from "@chakra-ui/react";
   import { FaShoppingCart, FaReceipt, FaPlus, FaMinus, FaTrash } from "react-icons/fa";
   import { forwardRef, useRef } from "react";
-  
-  // Hàm định dạng giá theo VNĐ
-  const formatPrice = (amount) => {
-    return new Intl.NumberFormat('vi-VN', { 
-        style: 'currency', 
-        currency: 'VND',
-        maximumFractionDigits: 0
-    }).format(amount);
-  };
-  
+  import { formatVND} from '../../Utils/FormatUtils';
   const Cart = forwardRef(({ 
     cart, 
     increaseQuantity, 
@@ -97,8 +88,8 @@ import {
                       />
                     </HStack>
                   </Td>
-                  <Td isNumeric whiteSpace="nowrap">{formatPrice(item.price)}</Td>
-                  <Td isNumeric whiteSpace="nowrap">{formatPrice(item.total)}</Td>
+                  <Td isNumeric whiteSpace="nowrap">{formatVND(item.price)}</Td>
+                  <Td isNumeric whiteSpace="nowrap">{formatVND(item.total)}</Td>
                   <Td>
                     <Tooltip label="Xóa sản phẩm" hasArrow>
                       <IconButton
@@ -126,7 +117,7 @@ import {
   
         <HStack justify="space-between">
           <Text fontWeight="bold">Tổng cộng:</Text>
-          <Text fontWeight="bold">{formatPrice(cart.totalAmount)}</Text>
+          <Text fontWeight="bold">{formatVND(cart.totalAmount)}</Text>
         </HStack>
   
         {cart.note && (

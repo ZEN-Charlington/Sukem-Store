@@ -1,28 +1,38 @@
+// controllers/authen.controller.js
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Lấy các biến từ .env
+const EMAIL_USERNAME = process.env.EMAIL_USERNAME || "minhlam1610.work@gmail.com";
+const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "jhnn nfcl yygn npxw";
+const EMAIL_FROM = process.env.EMAIL_FROM || "minhlam1610.work@gmail.com";
+const JWT_SECRET = process.env.JWT_SECRET || "raeT";
+const JWT_EXPIRE = process.env.JWT_EXPIRE || "4h";
+const RESET_TOKEN_EXPIRE = process.env.RESET_TOKEN_EXPIRE || 15; // phút
 
 // Cấu hình nodemailer
-const EMAIL_USERNAME="minhlam1610.work@gmail.com"; // này là đăng nhập gmail á, xài gmail cá nhân
-const EMAIL_PASSWORD="jhnn nfcl yygn npxw"; // này là pass của App chứ ko phải pass thực tế
-const EMAIL_FROM="minhlam1610.work@gmail.com"; //này là mail kiểu nó gửi tới từ địa chỉ này như là SukemStore@mail mà xài cá nhân cho dễ demo
-const JWT_SECRET="tieuminhdeptrai";
-
-
 const transporter = nodemailer.createTransport({
-  service: "gmail", // Hoặc SMTP provider của bạn
+  service: "gmail", 
   auth: {
     user: EMAIL_USERNAME,
     pass: EMAIL_PASSWORD
   }
 });
 
+/**
+ * Đăng ký người dùng mới
+ * Mặc định quyền là "worker"
+ */
 export const registerUser = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role = "worker" } = req.body;
   
-  // Kiểm tra chắc chắn có đủ 3 field
+  // Kiểm tra đầy đủ thông tin
   if (!name || !email || !password) {
     return res.status(400).json({
       success: false,
@@ -35,13 +45,28 @@ export const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
+    // Chỉ cho phép tạo người dùng với vai trò worker nếu không phải admin
+    const userRole = role === "manager" && req.user?.role !== "manager" ? "worker" : role;
+    
     // Tạo và lưu user mới
-    const newUser = new User({ name, email, password: hashedPassword });
+    const newUser = new User({ 
+      name, 
+      email, 
+      password: hashedPassword,
+      role: userRole 
+    });
+    
     await newUser.save();
     
     return res.status(201).json({
       success: true,
-      message: "Đăng ký thành công!"
+      message: "Đăng ký thành công!",
+      data: {
+        _id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role
+      }
     });
   } catch (err) {
     // Mongoose validation error
@@ -58,6 +83,10 @@ export const registerUser = async (req, res) => {
   }
 };
 
+/**
+ * Đăng nhập người dùng
+ * Tạo JWT token bao gồm thông tin role
+ */
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -75,15 +104,22 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "Sai mật khẩu." });
     }
     
+    // Tạo JWT token bao gồm userId, email và role
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: JWT_EXPIRE }
     );
     
     return res.status(200).json({
       success: true,
       token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      },
       message: "Đăng nhập thành công"
     });
   } catch (error) {
@@ -92,7 +128,40 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// Thêm endpoint quên mật khẩu
+/**
+ * Xác minh token JWT
+ * Trả về thông tin người dùng nếu token hợp lệ
+ */
+export const verifyToken = async (req, res) => {
+  try {
+    // Middleware protect đã xác thực token và gán req.user
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error("Verify token error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+/**
+ * Gửi email quên mật khẩu
+ * Tạo mã xác minh 6 chữ số và gửi qua email
+ */
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
   
@@ -117,25 +186,28 @@ export const forgotPassword = async (req, res) => {
     
     // Lưu token và thời gian hết hạn vào database
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 phút
+    user.resetPasswordExpire = Date.now() + RESET_TOKEN_EXPIRE * 60 * 1000; // RESET_TOKEN_EXPIRE phút
     await user.save();
     
     // Nội dung email
     const mailOptions = {
       from: EMAIL_FROM,
       to: user.email,
-      subject: "Sukem Store Đặt lại mật khẩu",
+      subject: "Sukem Store - Đặt lại mật khẩu",
       html: `
-         <div style="font-family: Arial, sans-serif; background-color: #f6f6f6; padding: 40px;">
-            <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
-              <div style="text-align: center; margin-bottom: 20px;">
-              </div>
-              <h1 style="color: #333;">Xin chào ${user.name}</h1>
-              <h2 style="color: #555;">Bạn nhận được email này vì bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu.</h2>
-              <p style="font-size: 18px; color: #000;">Mã xác minh của bạn là:</p>
-              <p style="font-size: 32px; font-weight: bold; color: #2c3e50; text-align: center;">${resetCode}</p>
+        <div style="font-family: Arial, sans-serif; background-color: #f6f6f6; padding: 40px;">
+          <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h2 style="color: #3182ce;">Sukem Store</h2>
             </div>
+            <h1 style="color: #333;">Xin chào ${user.name}</h1>
+            <h2 style="color: #555;">Bạn nhận được email này vì bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu.</h2>
+            <p style="font-size: 18px; color: #000;">Mã xác minh của bạn là:</p>
+            <p style="font-size: 32px; font-weight: bold; color: #2c3e50; text-align: center;">${resetCode}</p>
+            <p style="font-size: 14px; color: #777; margin-top: 30px;">Mã xác minh có hiệu lực trong ${RESET_TOKEN_EXPIRE} phút.</p>
+            <p style="font-size: 14px; color: #777;">Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
           </div>
+        </div>
       `
     };
     
@@ -155,7 +227,10 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-// Xác minh mã reset
+/**
+ * Xác minh mã reset
+ * Kiểm tra mã xác minh và tạo token để đặt lại mật khẩu
+ */
 export const verifyResetCode = async (req, res) => {
   const { email, resetCode } = req.body;
   
@@ -200,7 +275,10 @@ export const verifyResetCode = async (req, res) => {
   }
 };
 
-// Đặt lại mật khẩu
+/**
+ * Đặt lại mật khẩu
+ * Sử dụng token từ bước xác minh để đặt mật khẩu mới
+ */
 export const resetPassword = async (req, res) => {
   const { resetToken, newPassword } = req.body;
   
@@ -253,5 +331,104 @@ export const resetPassword = async (req, res) => {
       success: false,
       message: "Lỗi server."
     });
+  }
+};
+
+/**
+ * Lấy danh sách tất cả người dùng (chỉ cho manager)
+ */
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select("name email role createdAt");
+    
+    return res.status(200).json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách người dùng:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+/**
+ * Cập nhật vai trò của người dùng (chỉ cho manager)
+ */
+export const updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+    
+    if (!["manager", "worker"].includes(role)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Vai trò không hợp lệ. Phải là 'manager' hoặc 'worker'." 
+      });
+    }
+    
+    // Không thể thay đổi vai trò của chính mình để tránh bị khóa
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể thay đổi vai trò của chính mình"
+      });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
+    }
+    
+    user.role = role;
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: `Đã cập nhật vai trò người dùng thành ${role}`
+    });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật vai trò:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+/**
+ * Thăng cấp người dùng thành manager (chỉ dành cho manager hiện tại)
+ */
+export const promoteToManager = async (req, res) => {
+  try {
+    // Chỉ manager hiện tại mới có thể thăng cấp người khác
+    if (req.user.role !== "manager") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Bạn không có quyền thực hiện chức năng này" 
+      });
+    }
+    
+    const { userId } = req.params;
+    
+    // Không thể thăng cấp chính mình
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể thăng cấp chính mình"
+      });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
+    }
+    
+    user.role = "manager";
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: "Đã thăng cấp người dùng thành Manager"
+    });
+  } catch (error) {
+    console.error("Promote error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };

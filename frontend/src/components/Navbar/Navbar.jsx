@@ -1,7 +1,11 @@
-import { Box, Button, Container, Flex, HStack, Text, Input, useColorMode, useColorModeValue, Menu, MenuButton, MenuList, MenuItem, Icon } from '@chakra-ui/react';
+// components/NavBar/Navbar.jsx
+import {
+  Box, Button, Container, Flex, HStack, Text, Input, useColorMode, useColorModeValue, Menu, MenuButton, MenuList, MenuItem, Icon,
+  Divider
+} from '@chakra-ui/react';
 import { Link, useNavigate } from "react-router-dom";
 import { PlusSquareIcon, ChevronDownIcon } from "@chakra-ui/icons";
-import { FaUser, FaClipboardList, FaReceipt, FaChartLine, FaSignOutAlt } from "react-icons/fa";
+import { FaUser, FaUsers, FaClipboardList, FaReceipt, FaChartLine, FaSignOutAlt } from "react-icons/fa";
 import { IoMoon } from "react-icons/io5";
 import { LuSun } from "react-icons/lu";
 import { useAuthStore } from "../../store/user";
@@ -9,12 +13,13 @@ import { useDisclosure } from '@chakra-ui/react';
 import AuditLogs from './AuditLogs';
 import TransactionHistory from './TransactionHistory';
 import RevenueStatistics from './RevenueStatistics';
+import UserManagement from './UserManagement';
 
 const Navbar = ({ onSearch }) => {
   const { colorMode, toggleColorMode } = useColorMode();
   const bg = useColorModeValue("gray.100", "gray.900");
   const navigate = useNavigate();
-  const { logout, user } = useAuthStore();
+  const { logout, user, hasPermission } = useAuthStore();
   
   // Modal controls
   const { 
@@ -34,6 +39,11 @@ const Navbar = ({ onSearch }) => {
     onOpen: onRevenueStatisticsOpen,
     onClose: onRevenueStatisticsClose
   } = useDisclosure();
+  const {
+    isOpen: isUserManagementOpen,
+    onOpen: onUserManagementOpen,
+    onClose: onUserManagementClose
+  } = useDisclosure();
 
   const handleChange = (e) => {
     onSearch(e.target.value);
@@ -43,6 +53,9 @@ const Navbar = ({ onSearch }) => {
     logout();
     navigate('/login');
   };
+
+  // Kiểm tra quyền truy cập
+  const isManager = hasPermission("manager");
 
   return (
     <Box position="sticky" top="0" zIndex="999" bg={bg} boxShadow="sm" w="100%">
@@ -58,11 +71,14 @@ const Navbar = ({ onSearch }) => {
 
           {/* Nút tạo, đổi màu và tài khoản */}
           <HStack spacing={2}>
-            <Link to="/create">
-              <Button>
-                <PlusSquareIcon fontSize={20} />
-              </Button>
-            </Link>
+            {/* Chỉ hiển thị nút tạo sản phẩm cho manager */}
+            {isManager && (
+              <Link to="/create">
+                <Button>
+                  <PlusSquareIcon fontSize={20} />
+                </Button>
+              </Link>
+            )}
             <Button onClick={toggleColorMode}>
               {colorMode === "light" ? <IoMoon /> : <LuSun size="20" />}
             </Button>
@@ -76,15 +92,32 @@ const Navbar = ({ onSearch }) => {
                 <Text px={3} py={1} fontSize="sm" color="gray.500">
                   Xin chào, {user?.name || user?.email || "Pháp sư vô danh"}
                 </Text>
-                <MenuItem icon={<FaClipboardList />} onClick={onAuditLogOpen}>
-                  Nhật ký chỉnh sửa
-                </MenuItem>
+                <Text px={3} py={1} fontSize="sm" color="gray.500">
+                  Vai trò: {user?.role === "manager" ? "Quản lý" : "Nhân viên"}
+                </Text>
+                <Divider my={1} />
+                
+                {/* Hiển thị menu Lịch sử giao dịch cho cả manager và worker */}
                 <MenuItem icon={<FaReceipt />} onClick={onTransactionHistoryOpen}>
                   Lịch sử giao dịch
                 </MenuItem>
-                <MenuItem icon={<FaChartLine />} onClick={onRevenueStatisticsOpen}>
-                  Thống kê doanh thu
-                </MenuItem>
+                
+                {/* Chỉ hiển thị các tính năng quản lý đặc biệt cho manager */}
+                {isManager && (
+                  <>
+                    <MenuItem icon={<FaClipboardList />} onClick={onAuditLogOpen}>
+                      Nhật ký chỉnh sửa
+                    </MenuItem>
+                    <MenuItem icon={<FaChartLine />} onClick={onRevenueStatisticsOpen}>
+                      Thống kê doanh thu
+                    </MenuItem>
+                    <MenuItem icon={<FaUsers />} onClick={onUserManagementOpen}>
+                      Quản lý người dùng
+                    </MenuItem>
+                  </>
+                )}
+                
+                <Divider my={1} />
                 <MenuItem icon={<FaSignOutAlt />} onClick={handleLogout}>
                   Đăng xuất
                 </MenuItem>
@@ -93,15 +126,10 @@ const Navbar = ({ onSearch }) => {
           </HStack>
         </Flex>
       </Container>
-
-      {/* Modal Audit Log */}
       <AuditLogs isOpen={isAuditLogOpen} onClose={onAuditLogClose} />
-      
-      {/* Modal Transaction History */}
       <TransactionHistory isOpen={isTransactionHistoryOpen} onClose={onTransactionHistoryClose} />
-
-      {/* Modal Revenue Statistics */}
       <RevenueStatistics isOpen={isRevenueStatisticsOpen} onClose={onRevenueStatisticsClose} />
+      <UserManagement isOpen={isUserManagementOpen} onClose={onUserManagementClose} />
     </Box>
   );
 };

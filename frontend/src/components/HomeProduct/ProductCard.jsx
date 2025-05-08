@@ -1,3 +1,4 @@
+// components/HomeProduct/ProductCard.jsx
 import { 
     Box, 
     Heading, 
@@ -21,11 +22,15 @@ import {
     FormControl,
     FormLabel,
     InputGroup,
-    InputRightElement
+    InputRightElement,
+    Alert,
+    AlertIcon
 } from "@chakra-ui/react";
 import { DeleteIcon, EditIcon } from "@chakra-ui/icons";
 import { useProductStore } from "../../store/product";
+import { useAuthStore } from "../../store/user"; // Thêm import useAuthStore
 import { useState, useEffect } from "react";
+import { formatVND, formatNumberWithCommas } from '../../Utils/FormatUtils';
 
 const ProductCard = ({ product, compact = false }) => {
     const [updatedProduct, setUpdatedProduct] = useState(product);
@@ -34,27 +39,16 @@ const ProductCard = ({ product, compact = false }) => {
     const textColor = useColorModeValue("gray.600", "gray.300");
     const bgCard = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.200", "gray.700");
-    const shadowColor = useColorModeValue("rgba(0, 0, 0, 0.1)", "rgba(0, 0, 0, 0.3)");
     const hoverBg = useColorModeValue("gray.50", "gray.700");
 
     const { deleteProduct, updateProduct } = useProductStore();
+    const { hasPermission } = useAuthStore(); // Lấy hàm kiểm tra quyền
     const toast = useToast();
     const { isOpen, onOpen, onClose } = useDisclosure();
 
-    // Format giá tiền từ số sang định dạng VNĐ (cho phần hiển thị trong card)
-    const formatPrice = (amount) => {
-        return new Intl.NumberFormat('vi-VN', { 
-          style: 'currency', 
-          currency: 'VND',
-          maximumFractionDigits: 0
-        }).format(amount);
-    };
-
-    // Format số với dấu chấm phân cách hàng nghìn
-    const formatNumberWithCommas = (number) => {
-        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    };
-
+    // Kiểm tra người dùng có phải là manager không
+    const isManager = hasPermission("manager");
+    
     // Reset về thông tin hiện tại khi mở modal
     useEffect(() => {
         if (isOpen) {
@@ -63,6 +57,17 @@ const ProductCard = ({ product, compact = false }) => {
     }, [isOpen, product]);
 
     const handleDeleteProduct = async (pid) => {
+        // Kiểm tra quyền trước khi xóa
+        if (!isManager) {
+            toast({
+                title: "Không có quyền",
+                description: "Bạn không có quyền xóa sản phẩm",
+                status: "error", 
+                isClosable: true
+            });
+            return;
+        }
+        
         const { success, message } = await deleteProduct(pid);
         if (!success) {
             toast({
@@ -82,6 +87,18 @@ const ProductCard = ({ product, compact = false }) => {
     };
 
     const handleUpdateProduct = async (pid, updatedProduct) => {
+        // Kiểm tra quyền trước khi cập nhật
+        if (!isManager) {
+            toast({
+                title: "Không có quyền",
+                description: "Bạn không có quyền cập nhật sản phẩm",
+                status: "error", 
+                isClosable: true
+            });
+            onClose();
+            return;
+        }
+        
         const { success, message } = await updateProduct(pid, updatedProduct);
         onClose();
         if (!success) {
@@ -141,83 +158,104 @@ const ProductCard = ({ product, compact = false }) => {
                     {product.name}
                 </Heading>
                 <Text fontWeight="bold" fontSize={compact ? "lg" : "xl"} color={textColor} mb={compact ? 2 : 4}>
-                    {formatPrice(product.price)}
+                    {formatVND(product.price)}
                 </Text>
-                <HStack spacing={2}>
-                    <IconButton 
-                        icon={<EditIcon />}
-                        colorScheme="blue"
-                        size={compact ? "sm" : "md"}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onOpen();
-                        }}
-                    />
-                    <IconButton
-                        icon={<DeleteIcon />}
-                        colorScheme="red"
-                        size={compact ? "sm" : "md"}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProduct(product._id);
-                        }}
-                    />
-                </HStack>
+                
+                {/* Chỉ hiển thị nút chỉnh sửa và xóa cho người dùng có quyền manager */}
+                {isManager && (
+                    <HStack spacing={2}>
+                        <IconButton 
+                            icon={<EditIcon />}
+                            colorScheme="blue"
+                            size={compact ? "sm" : "md"}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpen();
+                            }}
+                        />
+                        <IconButton
+                            icon={<DeleteIcon />}
+                            colorScheme="red"
+                            size={compact ? "sm" : "md"}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteProduct(product._id);
+                            }}
+                        />
+                    </HStack>
+                )}
             </Box>
+            
+            {/* Modal sẽ hiển thị bất kể quyền, nhưng nội dung sẽ khác nhau dựa trên quyền */}
             <Modal isOpen={isOpen} onClose={onClose}>
                 <ModalOverlay>
                     <ModalContent>
                         <ModalHeader>Chỉnh sửa sản phẩm</ModalHeader>
                         <ModalCloseButton />
                         <ModalBody>
-                            <VStack spacing={4}>
-                                <FormControl>
-                                    <FormLabel>Tên sản phẩm</FormLabel>
-                                    <Input
-                                        placeholder="Tên sản phẩm"
-                                        value={updatedProduct.name}
-                                        name="name"
-                                        onChange={(e) => setUpdatedProduct({...updatedProduct, name: e.target.value})}
-                                    />
-                                </FormControl>
-                                
-                                <FormControl>
-                                    <FormLabel>Giá tiền</FormLabel>
-                                    <InputGroup>
+                            {!isManager ? (
+                                <Alert status="error" borderRadius="md">
+                                    <AlertIcon />
+                                    Bạn không có quyền chỉnh sửa sản phẩm. Tính năng này chỉ dành cho quản lý.
+                                </Alert>
+                            ) : (
+                                <VStack spacing={4}>
+                                    <FormControl>
+                                        <FormLabel>Tên sản phẩm</FormLabel>
                                         <Input
-                                            placeholder="Giá tiền"
-                                            value={getDisplayPrice()}
-                                            name="price"
-                                            onChange={handlePriceChange}
-                                            pr="40px"
+                                            placeholder="Tên sản phẩm"
+                                            value={updatedProduct.name}
+                                            name="name"
+                                            onChange={(e) => setUpdatedProduct({...updatedProduct, name: e.target.value})}
                                         />
-                                        <InputRightElement
-                                            pointerEvents="none"
-                                            color="gray.500"
-                                            fontSize="1em"
-                                            children="đ"
+                                    </FormControl>
+                                    
+                                    <FormControl>
+                                        <FormLabel>Giá tiền</FormLabel>
+                                        <InputGroup>
+                                            <Input
+                                                placeholder="Giá tiền"
+                                                value={getDisplayPrice()}
+                                                name="price"
+                                                onChange={handlePriceChange}
+                                                pr="40px"
+                                            />
+                                            <InputRightElement
+                                                pointerEvents="none"
+                                                color="gray.500"
+                                                fontSize="1em"
+                                                children="đ"
+                                            />
+                                        </InputGroup>
+                                    </FormControl>
+                                    
+                                    <FormControl>
+                                        <FormLabel>Link URL Hình ảnh</FormLabel>
+                                        <Input
+                                            placeholder="Link URL Hình ảnh"
+                                            value={updatedProduct.image}
+                                            onChange={(e) => setUpdatedProduct({...updatedProduct, image: e.target.value})}
+                                            name="image"
                                         />
-                                    </InputGroup>
-                                </FormControl>
-                                
-                                <FormControl>
-                                    <FormLabel>Link URL Hình ảnh</FormLabel>
-                                    <Input
-                                        placeholder="Link URL Hình ảnh"
-                                        value={updatedProduct.image}
-                                        onChange={(e) => setUpdatedProduct({...updatedProduct, image: e.target.value})}
-                                        name="image"
-                                    />
-                                </FormControl>
-                            </VStack>
+                                    </FormControl>
+                                </VStack>
+                            )}
                         </ModalBody>
                         <ModalFooter>
-                            <Button colorScheme="blue" mr={3} onClick={() => handleUpdateProduct(product._id, updatedProduct)}>
-                                Hoàn tất
-                            </Button>
-                            <Button variant="ghost" onClick={onClose}>
-                                Hủy
-                            </Button>
+                            {isManager ? (
+                                <>
+                                    <Button colorScheme="blue" mr={3} onClick={() => handleUpdateProduct(product._id, updatedProduct)}>
+                                        Hoàn tất
+                                    </Button>
+                                    <Button variant="ghost" onClick={onClose}>
+                                        Hủy
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button variant="ghost" onClick={onClose}>
+                                    Đóng
+                                </Button>
+                            )}
                         </ModalFooter>
                     </ModalContent>
                 </ModalOverlay>

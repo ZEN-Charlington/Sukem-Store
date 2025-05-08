@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export const useAuthStore = create((set) => ({
+export const useAuthStore = create((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -27,7 +27,7 @@ export const useAuthStore = create((set) => ({
       } else {
         localStorage.setItem("token", data.token);
         set({ 
-          user: data.user || {name: credentials.name} || { email: credentials.email },
+          user: data.user || { name: credentials.name, email: credentials.email, role: data.user?.role || "worker" },
           isAuthenticated: true,
           isLoading: false
         });
@@ -82,7 +82,6 @@ export const useAuthStore = create((set) => ({
     }
     
     try {
-      // Kiểm tra token hợp lệ với backend (nếu có endpoint)
       const res = await fetch("/api/authen/verify-token", {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -189,6 +188,75 @@ export const useAuthStore = create((set) => ({
     } catch (error) {
       console.error(error);
       set({ isLoading: false });
+      return { success: false, message: "Không thể kết nối server." };
+    }
+  },
+  
+  // Kiểm tra quyền của người dùng
+  hasPermission: (role) => {
+    const state = useAuthStore.getState();
+    if (!state.user) return false;
+    
+    if (role === "manager") {
+      return state.user.role === "manager";
+    }
+    
+    // Worker có thể truy cập các tính năng của worker
+    if (role === "worker") {
+      return ["worker", "manager"].includes(state.user.role);
+    }
+    
+    return false;
+  },
+  
+  // Lấy danh sách người dùng (chỉ cho manager)
+  getAllUsers: async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return { success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này." };
+    }
+    
+    try {
+      const res = await fetch("/api/authen/users", {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      
+      return await res.json();
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách người dùng:", error);
+      return { success: false, message: "Không thể kết nối server." };
+    }
+  },
+  
+  // Cập nhật vai trò người dùng (chỉ cho manager)
+  updateUserRole: async (userId, role) => {
+    // Kiểm tra người dùng đang đăng nhập
+    const currentUser = get().user;
+    if (userId === currentUser?._id) {
+      return { success: false, message: "Không thể thay đổi vai trò của chính mình." };
+    }
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return { success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này." };
+    }
+    
+    try {
+      const res = await fetch(`/api/authen/users/${userId}/role`, {
+        method: "PUT",
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ role })
+      });
+      
+      return await res.json();
+    } catch (error) {
+      console.error("Lỗi khi cập nhật vai trò:", error);
       return { success: false, message: "Không thể kết nối server." };
     }
   }

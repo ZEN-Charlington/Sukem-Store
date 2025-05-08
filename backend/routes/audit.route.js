@@ -1,10 +1,11 @@
 import express from "express";
-import { deleteAuditLogs, getAuditLogs } from "../controllers/audit.controller.js";
+import { getAuditLogs, deleteAuditLogs } from "../controllers/audit.controller.js";
 import { protect } from "../middleware/authen.middleware.js";
+import { checkRole } from "../middleware/checkRole.middleware.js";
 
 const router = express.Router();
 
-router.get("/", protect, getAuditLogs); // cái này là chỉ user đã đăng nhập mới được xem log nhe Cá Doi
-router.delete("/", protect, deleteAuditLogs);
+router.get("/", protect, checkRole(["manager"]), getAuditLogs);
+router.delete("/", protect, checkRole(["manager"]), deleteAuditLogs);
 
 export default router;

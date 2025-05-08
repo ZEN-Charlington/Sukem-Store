@@ -40,7 +40,7 @@ const HomePage = ({ searchKeyword = "" }) => {
     <Container maxW='container.xl' py={8}>
       <Flex direction={{ base: "column", lg: "row" }} gap={6}>
         {/* Phần danh sách sản phẩm - chiếm 2/3 bên trái */}
-        <Box flex="2" pr={{ base: 0, lg: 4 }}>
+        <Box flex="2" pr={{ base: 0, lg: 2 }}>
           <Text
             fontSize={"30"}
             fontWeight={"bold"}
@@ -56,10 +56,10 @@ const HomePage = ({ searchKeyword = "" }) => {
           
           <SimpleGrid
             columns={{
-              base: 1,
+              base: 4,
               sm: 2,
               md: 3,
-              lg: 4
+              lg: 4 
             }}
             spacing={4}
             w={"full"}

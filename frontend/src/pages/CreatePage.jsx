@@ -12,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import { useState } from "react";
 import { useProductStore } from "../store/product";
+import {formatNumberWithCommas } from '../Utils/FormatUtils';
 
 const CreatePage = () => {
   const [newProduct, setNewProduct] = useState({
@@ -24,10 +25,6 @@ const CreatePage = () => {
   const { createProduct } = useProductStore();
 
   // Format số với dấu chấm phân cách hàng nghìn
-  const formatNumberWithCommas = (number) => {
-    return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  };
-
   const handlePriceChange = (e) => {
     // Chỉ cho phép nhập số
     const rawValue = e.target.value.replace(/[^\d]/g, "");
