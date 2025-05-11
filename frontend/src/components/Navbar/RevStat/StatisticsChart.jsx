@@ -109,7 +109,7 @@ const StatisticsChart = ({ filter, receipts }) => {
     }));
   };
 
-  // Group receipts by weeks for the monthly chart
+  // Group receipts by weeks for the monthly chart - ĐÃ CẢI THIỆN
   const groupReceiptsByWeeks = (receipts) => {
     const now = new Date();
     // Filter receipts for this month
@@ -119,36 +119,55 @@ const StatisticsChart = ({ filter, receipts }) => {
              receiptDate.getFullYear() === now.getFullYear();
     });
     
-    const weeklyData = {
-      'Tuần 1': 0,
-      'Tuần 2': 0,
-      'Tuần 3': 0,
-      'Tuần 4': 0,
-      'Tuần 5': 0
-    };
+    // Tạo mảng tên tuần theo format "Tuần 1", "Tuần 2", v.v.
+    const weekLabels = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4', 'Tuần 5'];
+    
+    // Khởi tạo dữ liệu với tất cả các tuần trong tháng (luôn hiển thị đủ 4-5 tuần)
+    const weeklyData = {};
+    weekLabels.forEach(week => {
+      weeklyData[week] = 0;
+    });
+    
+    // Tính số ngày trong tháng hiện tại
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    // Kiểm tra xem tháng hiện tại có tuần thứ 5 không
+    const hasWeek5 = daysInMonth > 28;
     
     thisMonthReceipts.forEach(receipt => {
       const receiptDate = new Date(receipt.date);
-      // Determine which week of the month
+      // Xác định ngày trong tháng
       const day = receiptDate.getDate();
-      let week;
       
-      if (day <= 7) week = 'Tuần 1';
-      else if (day <= 14) week = 'Tuần 2';
-      else if (day <= 21) week = 'Tuần 3';
-      else if (day <= 28) week = 'Tuần 4';
-      else week = 'Tuần 5';
+      // Phân chia theo tuần trong tháng
+      let weekLabel;
+      if (day <= 7) {
+        weekLabel = 'Tuần 1';
+      } else if (day <= 14) {
+        weekLabel = 'Tuần 2';
+      } else if (day <= 21) {
+        weekLabel = 'Tuần 3';
+      } else if (day <= 28) {
+        weekLabel = 'Tuần 4';
+      } else {
+        weekLabel = 'Tuần 5';
+      }
       
-      weeklyData[week] = (weeklyData[week] || 0) + receipt.totalAmount;
+      weeklyData[weekLabel] = (weeklyData[weekLabel] || 0) + receipt.totalAmount;
     });
     
-    // Convert to array format for chart
-    return Object.keys(weeklyData)
-      .filter(week => weeklyData[week] > 0) // Only include weeks with data
+    // Chuyển đổi thành định dạng mảng cho biểu đồ
+    // Nếu tháng không có tuần 5, bỏ tuần 5 khỏi dữ liệu
+    const result = weekLabels
+      .filter(week => hasWeek5 || week !== 'Tuần 5')
       .map(week => ({
         time: week,
         revenue: weeklyData[week]
       }));
+    
+    return result;
   };
 
   // Group receipts by months for the yearly chart
