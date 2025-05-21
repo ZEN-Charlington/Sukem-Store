@@ -5,79 +5,99 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "./store/user";
 
 // Import các trang và components
-import CreatePage from "./pages/CreatePage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import RegisterPage from "./pages/RegisterPage";
-import PermissionGuard from "./components/PermissionGuard";
+import InventoryPage from "./pages/InventoryPage";
 import Navbar from "./components/NavBar/Navbar";
 
-// Component bảo vệ route yêu cầu đăng nhập
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, checkAuth } = useAuthStore();
+function App() {
+  // QUAN TRỌNG: Không thay đổi thứ tự các hooks trong component
+  const [searchKeyword, setSearchKeyword] = useState("");
+  
+  // Sử dụng useAuthStore trước khi khai báo các hooks khác
+  const { user, isAuthenticated, checkAuth } = useAuthStore();
+  
+  // Đảm bảo useState luôn được gọi trong mọi render, không nên phụ thuộc vào điều kiện
   const [isChecking, setIsChecking] = useState(true);
 
+  // Đảm bảo useEffect luôn được gọi trong mọi render
   useEffect(() => {
-    const verify = async () => {
+    const verifyAuth = async () => {
+      setIsChecking(true);
       await checkAuth();
       setIsChecking(false);
     };
-    verify();
+
+    verifyAuth();
   }, [checkAuth]);
 
-  if (isChecking) {
-    return <Box textAlign="center" py={10}>Đang kiểm tra...</Box>;
-  }
+  // Sử dụng biến để điều kiện thay vì return sớm
+  const renderContent = () => {
+    if (isChecking) {
+      return <Box textAlign="center" py={10}>Đang kiểm tra xác thực...</Box>;
+    }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" />;
-  }
-
-  return children;
-};
-
-function App() {
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const { checkAuth } = useAuthStore();
-
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  return (
-    <Box minH={"100vh"} bg={useColorModeValue("gray.100", "gray.900")}>
+    return (
       <Routes>
-        {/* Trang chủ - tất cả người dùng đã đăng nhập đều có thể truy cập */}
+        {/* Các trang không yêu cầu đăng nhập */}
+        <Route 
+          path="/login" 
+          element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />} 
+        />
+        
+        <Route 
+          path="/forgot-password" 
+          element={isAuthenticated ? <Navigate to="/" /> : <ForgotPasswordPage />} 
+        />
+
+        {/* Trang chủ - yêu cầu đăng nhập */}
         <Route
           path="/"
           element={
-            <ProtectedRoute>
-              <Navbar onSearch={setSearchKeyword} />
-              <HomePage searchKeyword={searchKeyword} />
-            </ProtectedRoute>
-          }
-        />
-        
-        {/* Trang tạo sản phẩm - yêu cầu quyền manager */}
-        <Route
-          path="/create"
-          element={
-            <ProtectedRoute>
-              <PermissionGuard requiredRole="manager">
+            isAuthenticated ? (
+              <>
                 <Navbar onSearch={setSearchKeyword} />
-                <CreatePage />
-              </PermissionGuard>
-            </ProtectedRoute>
+                <HomePage searchKeyword={searchKeyword} />
+              </>
+            ) : (
+              <Navigate to="/login" />
+            )
           }
         />
         
-        {/* Các trang không yêu cầu đăng nhập */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="*" element={<Navigate to="/login" />} />
+        {/* Trang quản lý kho - yêu cầu đăng nhập và quyền manager */}
+        <Route
+          path="/inventory"
+          element={
+            isAuthenticated ? (
+              user?.role === "manager" ? (
+                <>
+                  <Navbar onSearch={setSearchKeyword} />
+                  <InventoryPage />
+                </>
+              ) : (
+                <Navigate to="/" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        
+        {/* Chuyển hướng các route khác về trang đăng nhập hoặc trang chủ */}
+        <Route 
+          path="*" 
+          element={isAuthenticated ? <Navigate to="/" /> : <Navigate to="/login" />} 
+        />
       </Routes>
+    );
+  };
+
+  // Đảm bảo cấu trúc component nhất quán
+  return (
+    <Box minH={"100vh"} bg={useColorModeValue("gray.100", "gray.900")}>
+      {renderContent()}
     </Box>
   );
 }

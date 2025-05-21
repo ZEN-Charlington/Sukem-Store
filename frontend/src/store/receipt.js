@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useProductStore } from "./product"; 
 
 export const useReceiptStore = create((set) => ({
     receipts: [],
@@ -33,6 +34,9 @@ export const useReceiptStore = create((set) => ({
             
             // Cập nhật state với hóa đơn mới
             set((state) => ({ receipts: [...state.receipts, data.data] }));
+            const { fetchProducts } = useProductStore.getState();
+            await fetchProducts();
+
             return { success: true, message: "Hóa đơn mới đã được tạo.", data: data.data };
         } catch (error) {
             console.error("Lỗi khi tạo hóa đơn:", error);

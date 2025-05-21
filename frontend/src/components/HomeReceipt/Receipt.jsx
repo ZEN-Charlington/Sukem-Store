@@ -1,7 +1,5 @@
 import {
   Box,
-  Spacer, 
-  Button, 
   Tabs, 
   TabList, 
   TabPanels, 
@@ -9,53 +7,45 @@ import {
   TabPanel, 
   useColorModeValue,
   useDisclosure,
-  Select,
   useToast,
-  Alert,
-  AlertIcon,
-  AlertTitle,
-  AlertDescription,
   IconButton,
-  Text
+  Text,
+  Flex,
+  Badge
 } from "@chakra-ui/react";
 import { useState, forwardRef, useImperativeHandle, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useReceiptStore } from "../../store/receipt";
-import { FaSignInAlt, FaTimes } from "react-icons/fa";
+import { FaTimes, FaClock } from "react-icons/fa";
 import Cart from "./Cart";
 import Note from "./Note";
 import CheckOut from "./CheckOut";
 import QrPayment from "./QrPayment";
+import { useTimeCounter, TimeDisplay } from "../../utils/TimeCounter.jsx";
 
-const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
+const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   const componentId = useRef(`receipt-${Math.random().toString(36).substring(2, 9)}`).current;
   const { createReceipt } = useReceiptStore();
   const toast = useToast();
-  const navigate = useNavigate();
-  
-  // Helper function để tạo ID hóa đơn theo định dạng mới
   const generateInvoiceId = (cartIndex) => {
-    return `${componentId}-${cartIndex + 1}`; // Thêm component ID để tránh xung đột
+    return `${componentId}-${cartIndex + 1}`;
   };
-  
   const [carts, setCarts] = useState(() => {
-    return [{
+    const initialCart = {
       id: 1, 
       items: [], 
       note: "", 
       paymentMethod: "Tiền mặt",
       paymentStatus: "Chưa thanh toán",
-      invoiceNumber: `${componentId}-1`, // Đảm bảo ID duy nhất
+      invoiceNumber: `${componentId}-1`, 
       date: new Date(),
       totalAmount: 0
-    }];
+    };
+    return [initialCart];
   });
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const { isOpen: isNoteOpen, onOpen: onNoteOpen, onClose: onNoteClose } = useDisclosure();
   const { isOpen: isQrOpen, onOpen: onQrOpen, onClose: onQrClose } = useDisclosure();
-  const [showAuthAlert, setShowAuthAlert] = useState(false);
-  // Thêm state để lưu trữ cart đang hiển thị QR
   const [qrActiveCart, setQrActiveCart] = useState(null);
   
   const bgCard = useColorModeValue("white", "gray.800");
@@ -63,8 +53,72 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
   const textColor = useColorModeValue("gray.800", "white");
   const bgHover = useColorModeValue("gray.50", "gray.700");
   const bgGreet = useColorModeValue("gray.200", "gray.700");
+  
+  const handleCartTimeout = (invoiceId) => {
+    const cartIndex = carts.findIndex(cart => cart.invoiceNumber === invoiceId);
+    if (cartIndex !== -1) {
+      toast({
+        title: "Hóa đơn đã hết hạn",
+        description: `Hóa đơn #${carts[cartIndex].id} đã bị xóa do quá thời gian thanh toán (15 phút)`,
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      setCarts(prevCarts => {
+        const newCarts = [...prevCarts];
+        if (cartIndex === 0 && prevCarts.length === 1) {
+          newCarts[0] = {
+            ...newCarts[0],
+            items: [],
+            note: "",
+            totalAmount: 0
+          };
+        } else {
+          newCarts.splice(cartIndex, 1);
+          if (activeTabIndex === cartIndex) {
+            setActiveTabIndex(Math.max(0, cartIndex - 1));
+          } else if (activeTabIndex > cartIndex) {
+            setActiveTabIndex(activeTabIndex - 1);
+          }
+        }
+        
+        return newCarts;
+      });
+    }
+  };
+  
+  const { startTimer, stopTimer, getRemainingTime } = useTimeCounter(15, handleCartTimeout);
+  
+  useEffect(() => {
+    carts.forEach(cart => {
+      if (cart.items.length > 0 && cart.paymentStatus === "Chưa thanh toán") {
+        startTimer(cart.invoiceNumber);
+      }
+    });
+  }, [carts.length]); 
+
+  // Hàm cập nhật tổng tiền của giỏ hàng
+  const updateCartTotal = (cart) => {
+    const totalAmount = cart.items.reduce((sum, item) => {
+      return sum + (item.price * item.quantity);
+    }, 0);
+    return { ...cart, totalAmount };
+  };
 
   const addToCart = (product) => {
+    // Kiểm tra tồn kho
+    const storage = productStorage?.[product._id] || 0;
+    if (storage <= 0) {
+      toast({
+        title: "Không thể thêm sản phẩm",
+        description: `Sản phẩm "${product.name}" đã hết hàng!`,
+        status: "error",
+        duration: 2000,
+        isClosable: true,
+      });
+      return;
+    }
+    
     setCarts(prevCarts => {
       const newCarts = [...prevCarts];
       const activeCart = { ...newCarts[activeTabIndex] };
@@ -72,64 +126,107 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
       const existingItemIndex = activeCart.items.findIndex(item => item.productId === product._id);
       
       if (existingItemIndex === -1) {
-        activeCart.items.push({
+        // Thêm sản phẩm mới
+        const newItem = {
           productId: product._id,
           productName: product.name,
-          price: product.price,
+          price: Number(product.price),
           quantity: 1,
           image: product.image,
-          total: product.price
-        });
+          total: Number(product.price)
+        };
+        
+        activeCart.items = [...activeCart.items, newItem];
+        
+        // Cập nhật tổng tiền
+        const updatedCart = updateCartTotal(activeCart);
+        newCarts[activeTabIndex] = updatedCart;
+        
+        if (activeCart.items.length === 1) {
+          startTimer(activeCart.invoiceNumber);
+        }
+      } else {
+        // Sản phẩm đã tồn tại, tăng số lượng nếu chưa đạt giới hạn tồn kho
+        const currentItem = activeCart.items[existingItemIndex];
+        if (currentItem.quantity < storage) {
+          const updatedItems = [...activeCart.items];
+          updatedItems[existingItemIndex] = {
+            ...currentItem,
+            quantity: currentItem.quantity + 1,
+            total: (currentItem.quantity + 1) * currentItem.price
+          };
+          
+          activeCart.items = updatedItems;
+          
+          // Cập nhật tổng tiền
+          const updatedCart = updateCartTotal(activeCart);
+          newCarts[activeTabIndex] = updatedCart;
+        } else {
+          toast({
+            title: "Không thể thêm sản phẩm",
+            description: `Số lượng sản phẩm "${product.name}" đã đạt giới hạn tồn kho (${storage})`,
+            status: "warning",
+            duration: 2000,
+            isClosable: true,
+          });
+        }
       }
       
-      activeCart.totalAmount = activeCart.items.reduce((sum, item) => sum + item.total, 0);
-      newCarts[activeTabIndex] = activeCart;
       return newCarts;
     });
   };
 
   const increaseQuantity = (itemIndex) => {
-    setCarts(prev =>
-      prev.map((cart, idx) => {
-        if (idx !== activeTabIndex) return cart;
-        const items = cart.items.map((it, i) =>
-          i === itemIndex
-            ? { 
-                ...it,
-                quantity: it.quantity + 1,
-                total: (it.quantity + 1) * it.price
-              }
-            : it
-        );
-        return {
-          ...cart,
-          items,
-          totalAmount: items.reduce((sum, it) => sum + it.total, 0)
+    setCarts(prevCarts => {
+      const newCarts = [...prevCarts];
+      const activeCart = { ...newCarts[activeTabIndex] };
+      const item = activeCart.items[itemIndex];
+      const storage = productStorage && productStorage[item.productId] ? 
+        Number(productStorage[item.productId]) : 5;
+      
+      // Kiểm tra số lượng tồn kho trước khi tăng
+      if (item.quantity < storage && item.quantity < 100) {
+        const updatedItems = [...activeCart.items];
+        updatedItems[itemIndex] = {
+          ...item,
+          quantity: item.quantity + 1,
+          total: (item.quantity + 1) * item.price
         };
-      })
-    );
+        
+        activeCart.items = updatedItems;
+        
+        // Cập nhật tổng tiền
+        const updatedCart = updateCartTotal(activeCart);
+        newCarts[activeTabIndex] = updatedCart;
+      }
+      
+      return newCarts;
+    });
   };
     
   const decreaseQuantity = (itemIndex) => {
-    setCarts(prev =>
-      prev.map((cart, idx) => {
-        if (idx !== activeTabIndex) return cart;
-        const items = cart.items.map((it, i) => {
-          if (i !== itemIndex) return it;
-          const newQty = Math.max(it.quantity - 1, 1);
-          return {
-            ...it,
-            quantity: newQty,
-            total: newQty * it.price
-          };
-        });
-        return {
-          ...cart,
-          items,
-          totalAmount: items.reduce((sum, it) => sum + it.total, 0)
+    setCarts(prevCarts => {
+      const newCarts = [...prevCarts];
+      const activeCart = { ...newCarts[activeTabIndex] };
+      const item = activeCart.items[itemIndex];
+      
+      if (item.quantity > 1) {
+        const updatedItems = [...activeCart.items];
+        updatedItems[itemIndex] = {
+          ...item,
+          quantity: item.quantity - 1,
+          total: (item.quantity - 1) * item.price
         };
-      })
-    );
+        
+        activeCart.items = updatedItems;
+        
+        // Cập nhật tổng tiền
+        const updatedCart = updateCartTotal(activeCart);
+        newCarts[activeTabIndex] = updatedCart;
+      }
+      
+      return newCarts;
+    });
   };
 
   const removeItem = (itemIndex) => {
@@ -137,31 +234,42 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
       const newCarts = [...prevCarts];
       const activeCart = { ...newCarts[activeTabIndex] };
       
+      // Xóa sản phẩm khỏi giỏ hàng
       activeCart.items = activeCart.items.filter((_, index) => index !== itemIndex);
-      activeCart.totalAmount = activeCart.items.reduce((sum, item) => sum + item.total, 0);
       
-      newCarts[activeTabIndex] = activeCart;
+      // Cập nhật tổng tiền
+      const updatedCart = updateCartTotal(activeCart);
+      newCarts[activeTabIndex] = updatedCart;
+      
+      if (activeCart.items.length === 0) {
+        stopTimer(activeCart.invoiceNumber);
+      }
+      
       return newCarts;
     });
   };
 
   const createNewBill = () => {
     const newCartId = carts.length + 1;
+    const newInvoiceNumber = generateInvoiceId(carts.length);
+    
     setCarts([...carts, { 
       id: newCartId, 
       items: [], 
       note: "",
       paymentMethod: "Tiền mặt",
       paymentStatus: "Chưa thanh toán",
-      invoiceNumber: generateInvoiceId(carts.length),
+      invoiceNumber: newInvoiceNumber,
       date: new Date(),
       totalAmount: 0
     }]);
     setActiveTabIndex(carts.length);
   };
-
+  
   const removeCart = (cartIndex) => {
     if (cartIndex === 0) return;
+    const cartToRemove = carts[cartIndex];
+    stopTimer(cartToRemove.invoiceNumber);
     setCarts(prevCarts => {
       const newCarts = prevCarts.filter((_, index) => index !== cartIndex);
       if (activeTabIndex === cartIndex) {
@@ -199,72 +307,43 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
     return {
       addToCart,
       cleanup: () => {
+        carts.forEach(cart => {
+          stopTimer(cart.invoiceNumber);
+        });
       }
     };
   });
 
-  const redirectToLogin = () => {
-    navigate("/login");
-  };
-
   const handleActionButton = () => {
-    if (carts[activeTabIndex].items.length === 0) {
+    if (!isAuthenticated) {
       toast({
-        title: "Giỏ hàng trống",
-        description: "Vui lòng thêm sản phẩm vào giỏ hàng trước khi thanh toán",
+        title: "Cần đăng nhập",
+        description: "Vui lòng đăng nhập để thực hiện thanh toán",
         status: "warning",
         duration: 3000,
         isClosable: true,
       });
       return;
     }
-
-    if (!isAuthenticated) {
-      setShowAuthAlert(true);
-      return;
-    }
-
     const activeCart = carts[activeTabIndex];
-    
-    // Lưu cart hiện tại vào state để sử dụng cho QR modal
     setQrActiveCart({...activeCart});
-    
-    // Kiểm tra phương thức thanh toán
     if (activeCart.paymentMethod === "Chuyển khoản") {
-      // Mở modal QR
       onQrOpen();
     } else {
-      // Xử lý thanh toán tiền mặt
       handleCheckout();
     }
   };
 
   const handleQrPaymentComplete = () => {
-    // Sau khi người dùng xác nhận đã thanh toán qua QR, tiến hành xử lý thanh toán
     handleCheckout();
-    // Đóng modal QR
     onQrClose();
   };
 
   const handleCheckout = async () => {
     setIsProcessing(true);
-    
-    const userId = user?._id;
-    
-    if (!userId) {
-      toast({
-        title: "Lỗi thông tin người dùng",
-        description: "Không thể xác định thông tin người dùng, vui lòng đăng nhập lại",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-      setIsProcessing(false);
-      return;
-    }
-    
+    const userId = user?._id; 
     const activeCart = carts[activeTabIndex];
-    
+    stopTimer(activeCart.invoiceNumber);
     const receiptData = {
       products: activeCart.items.map(item => ({
         productId: item.productId,
@@ -272,7 +351,7 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
         price: item.price,
         quantity: item.quantity,
         image: item.image,
-        total: item.total
+        total: item.price * item.quantity
       })),
       userId: userId,
       paymentMethod: activeCart.paymentMethod,
@@ -344,51 +423,38 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
       minWidth="600px"
       width="100%"
     >
-      {showAuthAlert && (
-        <Alert 
-          status="warning" 
-          variant="solid" 
-          mb={4}
-          borderRadius="md"
-        >
-          <AlertIcon />
-          <AlertTitle mr={2}>Bạn chưa đăng nhập!</AlertTitle>
-          <AlertDescription>Cần đăng nhập để tạo hóa đơn.</AlertDescription>
-          <Spacer />
-          <Button 
-            colorScheme="yellow" 
-            size="sm" 
-            leftIcon={<FaSignInAlt />}
-            onClick={redirectToLogin}
-          >
-            Đăng nhập
-          </Button>
-          <Button 
-            variant="outline" 
-            colorScheme="white" 
-            size="sm" 
-            ml={2}
-            onClick={() => setShowAuthAlert(false)}
-          >
-            Đóng
-          </Button>
-        </Alert>
-      )}
-
       {isAuthenticated && user && (
         <Box mb={4} p={3} bg={bgGreet} borderRadius="md">
           <Text fontSize="sm" color={textColor}>
-            Xin chào, <Text as="span" fontWeight="bold">{user.name || user.email}</Text>
+            Thu ngân: <Text as="span" fontWeight="bold">{user.name || user.email}</Text>
           </Text>
         </Box>
       )}
-
       <Tabs variant="enclosed" index={activeTabIndex} onChange={setActiveTabIndex}>
         <TabList>
           {carts.map((cart, index) => (
             <Box key={cart.id} position="relative">
               <Tab pr={index > 0 ? 8 : 3}>
-                HD {cart.id}
+                <Flex alignItems="center">
+                  <Text>HD {cart.id}</Text>
+                  {cart.items.length > 0 && cart.paymentStatus === "Chưa thanh toán" && (
+                    <Badge
+                      ml={2} 
+                      colorScheme={
+                        getRemainingTime(cart.invoiceNumber)?.minutes < 1 ? "red" : 
+                        getRemainingTime(cart.invoiceNumber)?.minutes < 5 ? "orange" : "green"
+                      }
+                      display="flex"
+                      alignItems="center"
+                    >
+                      <FaClock size="10" style={{ marginRight: '4px' }} />
+                      <TimeDisplay 
+                        invoiceId={cart.invoiceNumber} 
+                        getRemainingTime={getRemainingTime}
+                      />
+                    </Badge>
+                  )}
+                </Flex>
               </Tab>
               {index > 0 && (
                 <IconButton
@@ -410,12 +476,13 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
               )}
             </Box>
           ))}
-          <Tab onClick={createNewBill}>+</Tab>
+          {carts.length < 4 && (
+            <Tab onClick={createNewBill}>+</Tab>
+          )}
         </TabList>
         <TabPanels>
-          {carts.map((cart, cartIndex) => (
+          {carts.map((cart) => (
             <TabPanel key={cart.id} p={0} pt={4}>
-              {/* Cart Component */}
               <Cart 
                 cart={cart} 
                 increaseQuantity={increaseQuantity} 
@@ -423,9 +490,8 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
                 removeItem={removeItem}
                 bgHover={bgHover}
                 textColor={textColor}
+                productStorage={productStorage}
               />
-              
-              {/* Checkout Component */}
               <CheckOut 
                 cart={cart}
                 updatePaymentMethod={updatePaymentMethod}
@@ -437,16 +503,12 @@ const Receipt = forwardRef(({ isAuthenticated, user }, ref) => {
           ))}
         </TabPanels>
       </Tabs>
-
-      {/* Note Component */}
       <Note 
         note={carts[activeTabIndex]?.note || ""} 
         setNote={setNote} 
         isModalOpen={isNoteOpen} 
         onModalClose={onNoteClose} 
       />
-
-      {/* QR Payment Modal */}
       <QrPayment
         isOpen={isQrOpen}
         onClose={onQrClose}

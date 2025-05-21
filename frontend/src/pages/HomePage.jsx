@@ -5,7 +5,7 @@ import {
   Flex, 
   Box,
 } from "@chakra-ui/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProductStore } from "../store/product";
 import { useAuthStore } from "../store/user";
@@ -15,21 +15,31 @@ import Receipt from "../components/HomeReceipt/Receipt";
 const HomePage = ({ searchKeyword = "" }) => {
   const { fetchProducts, products } = useProductStore();
   const { isAuthenticated, user, checkAuth } = useAuthStore();
-  
-  // Tạo ref để có thể gọi phương thức từ component Receipt
+  const [productStorage, setProductStorage] = useState({});
   const receiptRef = useRef(null);
   
   useEffect(() => {
-    fetchProducts();
-    checkAuth();
+    const loadData = async () => {
+      await fetchProducts();
+      await checkAuth();
+    };
+    
+    loadData();
   }, [fetchProducts, checkAuth]);
+  useEffect(() => {
+    if (products && products.length > 0) {
+      const storageMap = {};
+      products.forEach(product => {
+        storageMap[product._id] = Number(product.storage || 0);
+      });
+      setProductStorage(storageMap);
+    }
+  }, [products]);
 
-  // Lọc sản phẩm theo từ khóa tìm kiếm
   const filteredProducts = products.filter((product) => {
     return product.name && product.name.toLowerCase().includes(searchKeyword.toLowerCase());
   });
 
-  // Hàm để thêm sản phẩm vào giỏ hàng
   const handleAddToCart = (product) => {
     if (receiptRef.current) {
       receiptRef.current.addToCart(product);
@@ -39,7 +49,6 @@ const HomePage = ({ searchKeyword = "" }) => {
   return (
     <Container maxW='container.xl' py={8}>
       <Flex direction={{ base: "column", lg: "row" }} gap={6}>
-        {/* Phần danh sách sản phẩm - chiếm 2/3 bên trái */}
         <Box flex="2" pr={{ base: 0, lg: 2 }}>
           <Text
             fontSize={"30"}
@@ -81,12 +90,11 @@ const HomePage = ({ searchKeyword = "" }) => {
             </Text>
           )}
         </Box>
-
-        {/* Phần hóa đơn - sử dụng component Receipt */}
         <Receipt
           ref={receiptRef}
           isAuthenticated={isAuthenticated}
           user={user}
+          productStorage={productStorage} 
         />
       </Flex>
     </Container>

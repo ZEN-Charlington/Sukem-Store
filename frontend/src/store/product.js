@@ -1,10 +1,12 @@
+// store/product.js
 import { create } from "zustand";
 
 export const useProductStore = create((set) => ({
     products: [],
     setProducts: (products) => set({ products }),
     createProduct: async (newProduct) => {
-        if (!newProduct.name || !newProduct.price || !newProduct.image){
+        if (!newProduct.name || !newProduct.price || !newProduct.initialPrice || 
+            !newProduct.storage || !newProduct.image) {
             return {success: false, message:"Vui lòng điền đầy đủ thông tin sản phẩm."}
         }
         
@@ -18,7 +20,7 @@ export const useProductStore = create((set) => ({
             method:"POST",
             headers:{
                 "Content-Type":"application/json",
-                "Authorization": `Bearer ${token}` // Thêm token vào header
+                "Authorization": `Bearer ${token}` 
             },
             body:JSON.stringify(newProduct),
         });
@@ -32,7 +34,6 @@ export const useProductStore = create((set) => ({
         return {success: true, message:"Sản phẩm mới đã được tạo."}
     }, 
     fetchProducts: async () => {
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         
         const headers = token 
@@ -50,7 +51,6 @@ export const useProductStore = create((set) => ({
         return data;
     },
     deleteProduct: async(pid) =>{
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         if (!token) {
             return {success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này."}
@@ -59,18 +59,16 @@ export const useProductStore = create((set) => ({
         const res = await fetch(`/api/products/${pid}`, {
             method: "DELETE",
             headers: {
-                "Authorization": `Bearer ${token}` // Thêm token vào header
+                "Authorization": `Bearer ${token}`
             }
         });
         const data = await res.json();
         if(!data.success) return {success: false, message: data.message};
 
-        // update UI ngay lập tức để ko cần refresh trang
         set((state) => ({ products: state.products.filter((product) => product._id !== pid) }));
         return {success: true, message: data.message};
     },
     updateProduct: async(pid, updatedProduct) =>{
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         if (!token) {
             return {success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này."}
@@ -80,17 +78,38 @@ export const useProductStore = create((set) => ({
             method: "PUT",
             headers:{
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}` // Thêm token vào header
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify(updatedProduct),
         });
         const data = await res.json();
         if (!data.success) return {success: false, message: data.message};
         
-        // update UI ngay lập tức mà khum cần refresh
         set(state => ({ 
             products: state.products.map((product) => (product._id === pid ? data.data : product)),
         }));
         return {success: true, message: data.message};
+    },
+    updateStorage: async(pid, quantity) =>{
+        const token = localStorage.getItem("token");
+        if (!token) {
+            return {success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này."}
+        }
+        
+        const res = await fetch(`/api/products/${pid}/storage`,{
+            method: "PUT",
+            headers:{
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ quantity }),
+        });
+        const data = await res.json();
+        if (!data.success) return {success: false, message: data.message};
+        
+        set(state => ({ 
+            products: state.products.map((product) => (product._id === pid ? data.data : product)),
+        }));
+        return {success: true, message: "Đã cập nhật số lượng tồn kho."};
     },
 }));

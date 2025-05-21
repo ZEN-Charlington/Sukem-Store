@@ -1,3 +1,4 @@
+// store/user.js
 import { create } from "zustand";
 
 export const useAuthStore = create((set, get) => ({
@@ -98,9 +99,9 @@ export const useAuthStore = create((set, get) => ({
       }
     } catch (error) {
       console.error("Lỗi xác thực:", error);
-      // Nếu không connect được server, giả định token vẫn hợp lệ
-      set({ isAuthenticated: true });
-      return true;
+      // Nếu không connect được server, giữ nguyên trạng thái hiện tại
+      // THAY ĐỔI: Không tự động đặt isAuthenticated thành true
+      return get().isAuthenticated;
     }
   },
   
@@ -192,18 +193,20 @@ export const useAuthStore = create((set, get) => ({
     }
   },
   
-  // Kiểm tra quyền của người dùng
+  // Kiểm tra quyền của người dùng - SỬA LẠI để luôn lấy state hiện tại
   hasPermission: (role) => {
-    const state = useAuthStore.getState();
-    if (!state.user) return false;
+    // Lấy state hiện tại từ store
+    const { user } = get();
+    
+    if (!user) return false;
     
     if (role === "manager") {
-      return state.user.role === "manager";
+      return user.role === "manager";
     }
     
     // Worker có thể truy cập các tính năng của worker
     if (role === "worker") {
-      return ["worker", "manager"].includes(state.user.role);
+      return ["worker", "manager"].includes(user.role);
     }
     
     return false;
@@ -234,8 +237,8 @@ export const useAuthStore = create((set, get) => ({
   // Cập nhật vai trò người dùng (chỉ cho manager)
   updateUserRole: async (userId, role) => {
     // Kiểm tra người dùng đang đăng nhập
-    const currentUser = get().user;
-    if (userId === currentUser?._id) {
+    const { user } = get();
+    if (userId === user?._id) {
       return { success: false, message: "Không thể thay đổi vai trò của chính mình." };
     }
     

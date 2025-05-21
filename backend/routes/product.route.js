@@ -1,9 +1,11 @@
+// routes/product.routes.js
 import express from "express";
 import { 
   getProducts, 
   createProducts, 
   updateProduct, 
-  deleteProduct 
+  deleteProduct,
+  updateStorage
 } from "../controllers/product.controller.js";
 import { protect } from "../middleware/authen.middleware.js";
 import { checkRole } from "../middleware/checkRole.middleware.js";
@@ -17,5 +19,6 @@ router.get("/", getProducts);
 router.post("/", protect, checkRole(["manager"]), createProducts);
 router.put("/:id", protect, checkRole(["manager"]), updateProduct);
 router.delete("/:id", protect, checkRole(["manager"]), deleteProduct);
+router.put("/:id/storage", protect, checkRole(["manager"]), updateStorage);
 
 export default router;

@@ -12,11 +12,13 @@ import {
   IconButton,
   Icon,
   Tooltip,
-  Spacer
+  Spacer,
+  Badge,
+  useToast
 } from "@chakra-ui/react";
 import { FaShoppingCart, FaReceipt, FaPlus, FaMinus, FaTrash } from "react-icons/fa";
-import { forwardRef, useRef } from "react";
-import { formatVND} from '../../Utils/FormatUtils';
+import { forwardRef, useRef, useMemo } from "react";
+import { formatVND } from '../../Utils/FormatUtils';
 
 const Cart = forwardRef(({ 
   cart, 
@@ -24,16 +26,26 @@ const Cart = forwardRef(({
   decreaseQuantity, 
   removeItem,
   bgHover,
-  textColor
+  textColor,
+  productStorage 
 }, ref) => {
   const updateTimeoutRef = useRef(null);
   const isUpdatingRef = useRef(false);
-
-  // Xử lý xóa sản phẩm
+  const toast = useToast();
+  
+  // Tự tính tổng tiền hiển thị trực tiếp
+  const calculatedTotal = useMemo(() => {
+    if (!cart?.items?.length) return 0;
+    
+    return cart.items.reduce((sum, item) => {
+      return sum + (Number(item.price) * Number(item.quantity));
+    }, 0);
+  }, [cart?.items]);
+  
   const handleRemoveItem = (index) => {
     if (isUpdatingRef.current) return;
     isUpdatingRef.current = true;
-    
+
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
     }
@@ -42,6 +54,37 @@ const Cart = forwardRef(({
       removeItem(index);
       isUpdatingRef.current = false;
     }, 10);
+  };
+  
+  const getStorageInfo = (productId) => {
+    if (!productStorage || productStorage[productId] === undefined) {
+      return 5;
+    }
+    return Number(productStorage[productId]);
+  };
+  
+  const handleIncreaseQuantity = (index) => {
+    const item = cart.items[index];
+    const storage = getStorageInfo(item.productId);
+    const quantity = Number(item.quantity);
+    
+    if ((storage > 0 && quantity >= storage) || quantity >= 100) {
+      toast({
+        title: "Không thể tăng số lượng",
+        description: `Số lượng đã đạt giới hạn ${storage > 0 ? `tồn kho (${storage})` : '100'}`,
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
+      return;
+    }
+    
+    increaseQuantity(index);
+  };
+
+  // Tính toán thành tiền của từng sản phẩm
+  const getItemTotal = (price, quantity) => {
+    return Number(price) * Number(quantity);
   };
 
   return (
@@ -66,48 +109,73 @@ const Cart = forwardRef(({
             </Tr>
           </Thead>
           <Tbody>
-            {cart.items.map((item, index) => (
-              <Tr key={`${item.productId}-${index}`}>
-                <Td maxWidth="200px">
-                  <Text noOfLines={2} wordBreak="break-word">
-                    {item.productName}
-                  </Text>
-                </Td>
-                <Td isNumeric>
-                  <HStack spacing={1} justifyContent="flex-end">
-                    <IconButton
-                      icon={<FaMinus />}
-                      size="xs"
-                      aria-label="Giảm số lượng"
-                      onClick={() => decreaseQuantity(index)}
-                      isDisabled={item.quantity <= 1}
-                    />
-                    <Text px={1} minWidth="20px" textAlign="center">{item.quantity}</Text>
-                    <IconButton
-                      icon={<FaPlus />}
-                      size="xs"
-                      aria-label="Tăng số lượng"
-                      onClick={() => increaseQuantity(index)}
-                      isDisabled={item.quantity >= 100}
-                    />
-                  </HStack>
-                </Td>
-                <Td isNumeric whiteSpace="nowrap">{formatVND(item.price)}</Td>
-                <Td isNumeric whiteSpace="nowrap">{formatVND(item.total)}</Td>
-                <Td>
-                  <Tooltip label="Xóa sản phẩm" hasArrow>
-                    <IconButton
-                      icon={<FaTrash />}
-                      size="xs"
-                      colorScheme="red"
-                      variant="ghost"
-                      aria-label="Xóa sản phẩm"
-                      onClick={() => handleRemoveItem(index)}
-                    />
-                  </Tooltip>
-                </Td>
-              </Tr>
-            ))}
+            {cart.items.map((item, index) => {
+              const storage = getStorageInfo(item.productId);
+              const quantity = Number(item.quantity);
+              const isLowStock = storage > 0 && storage <= 10;
+              const isOutOfStock = storage <= 0;
+              const isMaxQuantity = 
+                (storage > 0 && quantity >= storage) || 
+                quantity >= 100;
+              
+              // Tính thành tiền trực tiếp
+              const itemTotal = getItemTotal(item.price, quantity);
+              
+              return (
+                <Tr key={`${item.productId}-${index}`}>
+                  <Td maxWidth="200px">
+                    <VStack spacing={1} align="start" transition="none">
+                      <Text noOfLines={2} wordBreak="break-word">
+                        {item.productName}
+                      </Text>
+                      <Text 
+                        fontSize="xs" 
+                        color={isLowStock || isOutOfStock ? "red.500" : "gray.500"}
+                      >
+                        Tồn kho: {storage}  
+                        {isLowStock && !isOutOfStock && " (Sắp hết)"}
+                        {isOutOfStock && " (Hết hàng)"}
+                      </Text>
+                    </VStack>
+                  </Td>
+                  <Td isNumeric>
+                    <HStack spacing={1} justifyContent="flex-end">
+                      <IconButton
+                        icon={<FaMinus />}
+                        size="xs"
+                        aria-label="Giảm số lượng"
+                        onClick={() => decreaseQuantity(index)}
+                        isDisabled={quantity <= 1}
+                      />
+                      <Text px={1} minWidth="20px" textAlign="center">{quantity}</Text>
+                      <Box>
+                        <IconButton
+                          icon={<FaPlus />}
+                          size="xs"
+                          aria-label="Tăng số lượng"
+                          onClick={() => handleIncreaseQuantity(index)}
+                          isDisabled={isMaxQuantity}
+                        />
+                      </Box>
+                    </HStack>
+                  </Td>
+                  <Td isNumeric whiteSpace="nowrap">{formatVND(item.price)}</Td>
+                  <Td isNumeric whiteSpace="nowrap">{formatVND(itemTotal)}</Td>
+                  <Td>
+                    <Tooltip label="Xóa sản phẩm" hasArrow>
+                      <IconButton
+                        icon={<FaTrash />}
+                        size="xs"
+                        colorScheme="red"
+                        variant="ghost"
+                        aria-label="Xóa sản phẩm"
+                        onClick={() => handleRemoveItem(index)}
+                      />
+                    </Tooltip>
+                  </Td>
+                </Tr>
+              );
+            })}
           </Tbody>
         </Table>
       </Box>
@@ -121,7 +189,7 @@ const Cart = forwardRef(({
 
       <HStack justify="space-between">
         <Text fontWeight="bold">Tổng cộng:</Text>
-        <Text fontWeight="bold">{formatVND(cart.totalAmount)}</Text>
+        <Text fontWeight="bold">{formatVND(calculatedTotal)}</Text>
       </HStack>
 
       {cart.note && (

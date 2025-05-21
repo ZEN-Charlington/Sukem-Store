@@ -9,7 +9,6 @@ import {
   InputGroup, 
   InputRightElement, 
   IconButton,
-  Text,
   Box
 } from "@chakra-ui/react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
@@ -92,10 +91,7 @@ const LoginPage = () => {
         >
           Đăng nhập
         </Button>
-        <Box w="100%" display="flex" justifyContent="space-between">
-          <Button variant="link" colorScheme="blue" onClick={() => navigate("/register")}>
-            Chưa có tài khoản? Đăng ký
-          </Button>
+        <Box w="100%" display="flex" justifyContent="flex-end">
           <Button variant="link" colorScheme="blue" onClick={() => navigate("/forgot-password")}>
             Quên mật khẩu?
           </Button>

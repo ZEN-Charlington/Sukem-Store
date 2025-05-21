@@ -1,3 +1,4 @@
+// controllers/audit.controller.js
 import AuditLog from "../models/audit.model.js";
 
 export const getAuditLogs = async (req, res) => {
@@ -6,7 +7,7 @@ export const getAuditLogs = async (req, res) => {
     const logs = await AuditLog.find({})
       .sort({ timestamp: -1 })
       .populate("user", "name email")
-      .populate("productId", "name price image")
+      .populate("productId", "name price initialPrice storage image")
       .exec();
 
     // Định dạng lại để frontend dễ xử lý
@@ -15,9 +16,33 @@ export const getAuditLogs = async (req, res) => {
       const newData = log.newData || {};
       const current = log.productId || {};
 
+      // Xác định loại hành động để định dạng mô tả phù hợp
+      let actionDescription = "";
+      if (log.action === "CREATE") {
+        actionDescription = "Tạo sản phẩm mới";
+      } else if (log.action === "UPDATE") {
+        actionDescription = "Cập nhật thông tin sản phẩm";
+      } else if (log.action === "DELETE") {
+        actionDescription = "Xóa sản phẩm";
+      } else if (log.action === "UPDATE_STORAGE") {
+        // Tính toán số lượng thay đổi
+        const oldStorage = oldData.storage || 0;
+        const newStorage = newData.storage || 0;
+        const difference = newStorage - oldStorage;
+        
+        if (difference > 0) {
+          actionDescription = `Nhập thêm ${difference} sản phẩm vào kho`;
+        } else if (difference < 0) {
+          actionDescription = `Giảm ${Math.abs(difference)} sản phẩm trong kho`;
+        } else {
+          actionDescription = "Cập nhật số lượng tồn kho (không thay đổi)";
+        }
+      }
+
       return {
         user: log.user?.name || "Người dùng không tồn tại hoặc đã bị xóa",
         action: log.action,
+        actionDescription: actionDescription,
         // Tên sản phẩm hiện tại (từ populate) hoặc fallback về newData.name
         product: current.name || newData.name || "Sản phẩm không tồn tại hoặc đã bị xóa",
         timestamp: log.timestamp,
@@ -26,11 +51,15 @@ export const getAuditLogs = async (req, res) => {
           old: {
             name: oldData.name,
             price: oldData.price,
+            initialPrice: oldData.initialPrice,
+            storage: oldData.storage,
             image: oldData.image,
           },
           new: {
             name: newData.name,
             price: newData.price,
+            initialPrice: newData.initialPrice,
+            storage: newData.storage,
             image: newData.image,
           }
         }
