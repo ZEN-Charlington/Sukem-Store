@@ -1,23 +1,8 @@
-import { 
-  Box,
-  VStack,
-  HStack, 
-  Text, 
-  Table, 
-  Thead, 
-  Tbody, 
-  Tr, 
-  Th, 
-  Td,
-  IconButton,
-  Icon,
-  Tooltip,
-  Spacer,
-  Badge,
-  useToast
+import {
+  Box, VStack, HStack, Text, Table, Thead, Tbody, Tr, Th, Td, IconButton, Icon, Tooltip, Spacer, Badge, useToast
 } from "@chakra-ui/react";
 import { FaShoppingCart, FaReceipt, FaPlus, FaMinus, FaTrash } from "react-icons/fa";
-import { forwardRef, useRef, useMemo } from "react";
+import { forwardRef, useRef } from "react";
 import { formatVND } from '../../Utils/FormatUtils';
 
 const Cart = forwardRef(({ 
@@ -32,15 +17,6 @@ const Cart = forwardRef(({
   const updateTimeoutRef = useRef(null);
   const isUpdatingRef = useRef(false);
   const toast = useToast();
-  
-  // Tự tính tổng tiền hiển thị trực tiếp
-  const calculatedTotal = useMemo(() => {
-    if (!cart?.items?.length) return 0;
-    
-    return cart.items.reduce((sum, item) => {
-      return sum + (Number(item.price) * Number(item.quantity));
-    }, 0);
-  }, [cart?.items]);
   
   const handleRemoveItem = (index) => {
     if (isUpdatingRef.current) return;
@@ -82,7 +58,6 @@ const Cart = forwardRef(({
     increaseQuantity(index);
   };
 
-  // Tính toán thành tiền của từng sản phẩm
   const getItemTotal = (price, quantity) => {
     return Number(price) * Number(quantity);
   };
@@ -118,7 +93,6 @@ const Cart = forwardRef(({
                 (storage > 0 && quantity >= storage) || 
                 quantity >= 100;
               
-              // Tính thành tiền trực tiếp
               const itemTotal = getItemTotal(item.price, quantity);
               
               return (
@@ -159,7 +133,18 @@ const Cart = forwardRef(({
                       </Box>
                     </HStack>
                   </Td>
-                  <Td isNumeric whiteSpace="nowrap">{formatVND(item.price)}</Td>
+                  <Td isNumeric whiteSpace="nowrap">
+                    {item.hasPromotion ? (
+                      <VStack spacing={0} align="end">
+                        <Text color="red.500" fontWeight="bold">{formatVND(item.price)}</Text>
+                        <Text fontSize="xs" color="gray.500" textDecoration="line-through">
+                          {formatVND(item.originalPrice)}
+                        </Text>
+                      </VStack>
+                    ) : (
+                      formatVND(item.price)
+                    )}
+                  </Td>
                   <Td isNumeric whiteSpace="nowrap">{formatVND(itemTotal)}</Td>
                   <Td>
                     <Tooltip label="Xóa sản phẩm" hasArrow>
@@ -189,7 +174,7 @@ const Cart = forwardRef(({
 
       <HStack justify="space-between">
         <Text fontWeight="bold">Tổng cộng:</Text>
-        <Text fontWeight="bold">{formatVND(calculatedTotal)}</Text>
+        <Text fontWeight="bold">{formatVND(cart.totalAmount || 0)}</Text>
       </HStack>
 
       {cart.note && (

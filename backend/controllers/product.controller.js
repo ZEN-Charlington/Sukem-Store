@@ -53,7 +53,6 @@ export const createProducts = async (req, res) => {
   }
 };
 
-// Cập nhật sản phẩm và lưu audit log
 export const updateProduct = async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -61,16 +60,13 @@ export const updateProduct = async (req, res) => {
   }
 
   try {
-    // Lấy snapshot trước khi update
     const before = await Product.findById(id).lean();
     if (!before) {
       return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
     }
 
-    // Thực hiện update và lấy bản mới
     const updated = await Product.findByIdAndUpdate(id, req.body, { new: true });
 
-    // Ghi audit log
     await AuditLog.create({
       user: req.user?._id || null,
       action: "UPDATE",

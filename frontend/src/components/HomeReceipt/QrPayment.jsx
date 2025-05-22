@@ -134,7 +134,7 @@ const QrPayment = ({ isOpen, onClose, cart, onCompletePayment }) => {
 
                   <Flex justify="space-between" align="center">
                     <Text fontWeight="medium">Nội dung: </Text>
-                    <Text fontSize="sm">Thanh toan Sukem Store - {cart?.invoiceNumber || ""}</Text>
+                    <Text fontSize="sm">Thanh toán hóa đơn Sukem Store </Text>
                   </Flex>
                 </VStack>
               </Box>

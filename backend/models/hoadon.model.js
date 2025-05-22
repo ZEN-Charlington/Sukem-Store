@@ -56,6 +56,10 @@ const hoaDonSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  appliedCouponCode: {
+    type: String,
+    default: null
+  },
   paymentStatus: {
     type: String,
     enum: ["Chưa thanh toán", "Đã thanh toán", "Đang xử lý"],

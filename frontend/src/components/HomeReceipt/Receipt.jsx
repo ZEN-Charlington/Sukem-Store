@@ -15,20 +15,21 @@ import {
 } from "@chakra-ui/react";
 import { useState, forwardRef, useImperativeHandle, useRef, useEffect } from "react";
 import { useReceiptStore } from "../../store/receipt";
+import { usePromotionStore } from "../../store/promotion";
 import { FaTimes, FaClock } from "react-icons/fa";
 import Cart from "./Cart";
 import Note from "./Note";
 import CheckOut from "./CheckOut";
 import QrPayment from "./QrPayment";
+import CouponInput from "./CouponInput";
 import { useTimeCounter, TimeDisplay } from "../../utils/TimeCounter.jsx";
 
 const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
-  const componentId = useRef(`receipt-${Math.random().toString(36).substring(2, 9)}`).current;
+  const componentId = useRef(`HD-${Math.random().toString(36).substring(2, 9)}`).current;
   const { createReceipt } = useReceiptStore();
+  const { getPromotionByProduct } = usePromotionStore();
   const toast = useToast();
-  const generateInvoiceId = (cartIndex) => {
-    return `${componentId}-${cartIndex + 1}`;
-  };
+  
   const [carts, setCarts] = useState(() => {
     const initialCart = {
       id: 1, 
@@ -36,9 +37,9 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
       note: "", 
       paymentMethod: "Tiền mặt",
       paymentStatus: "Chưa thanh toán",
-      invoiceNumber: `${componentId}-1`, 
       date: new Date(),
-      totalAmount: 0
+      totalAmount: 0,
+      appliedCoupon: null
     };
     return [initialCart];
   });
@@ -55,24 +56,12 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   const bgGreet = useColorModeValue("gray.200", "gray.700");
   
   const handleCartTimeout = (invoiceId) => {
-    const cartIndex = carts.findIndex(cart => cart.invoiceNumber === invoiceId);
+    const cartIndex = carts.findIndex(cart => cart.id === parseInt(invoiceId.split('-')[1]));
     if (cartIndex !== -1) {
-      toast({
-        title: "Hóa đơn đã hết hạn",
-        description: `Hóa đơn #${carts[cartIndex].id} đã bị xóa do quá thời gian thanh toán (15 phút)`,
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-      });
       setCarts(prevCarts => {
         const newCarts = [...prevCarts];
         if (cartIndex === 0 && prevCarts.length === 1) {
-          newCarts[0] = {
-            ...newCarts[0],
-            items: [],
-            note: "",
-            totalAmount: 0
-          };
+          newCarts[0] = { ...newCarts[0], items: [], note: "", totalAmount: 0 };
         } else {
           newCarts.splice(cartIndex, 1);
           if (activeTabIndex === cartIndex) {
@@ -81,7 +70,6 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
             setActiveTabIndex(activeTabIndex - 1);
           }
         }
-        
         return newCarts;
       });
     }
@@ -92,61 +80,57 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   useEffect(() => {
     carts.forEach(cart => {
       if (cart.items.length > 0 && cart.paymentStatus === "Chưa thanh toán") {
-        startTimer(cart.invoiceNumber);
+        startTimer(`${componentId}-${cart.id}`);
       }
     });
   }, [carts.length]); 
 
-  // Hàm cập nhật tổng tiền của giỏ hàng
-  const updateCartTotal = (cart) => {
-    const totalAmount = cart.items.reduce((sum, item) => {
-      return sum + (item.price * item.quantity);
-    }, 0);
-    return { ...cart, totalAmount };
+  const calculateCartTotal = (cart) => {
+    const originalTotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    if (cart.appliedCoupon) {
+      const discountAmount = Math.round(originalTotal * (cart.appliedCoupon.coupon.discountPercent / 100));
+      return originalTotal - discountAmount;
+    }
+    return originalTotal;
   };
 
-  const addToCart = (product) => {
-    // Kiểm tra tồn kho
+  const updateCartTotal = (cart) => {
+    return { ...cart, totalAmount: calculateCartTotal(cart) };
+  };
+
+  const addToCart = async (product) => {
     const storage = productStorage?.[product._id] || 0;
-    if (storage <= 0) {
-      toast({
-        title: "Không thể thêm sản phẩm",
-        description: `Sản phẩm "${product.name}" đã hết hàng!`,
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
-      return;
-    }
+    if (storage <= 0) return;
+
+    const promotionResult = await getPromotionByProduct(product._id);
+    const promotion = promotionResult.success ? promotionResult.data : null;
+    const finalPrice = promotion ? 
+      Math.round(product.price * (1 - promotion.discountPercent / 100)) : 
+      product.price;
     
     setCarts(prevCarts => {
       const newCarts = [...prevCarts];
       const activeCart = { ...newCarts[activeTabIndex] };
-      
       const existingItemIndex = activeCart.items.findIndex(item => item.productId === product._id);
       
       if (existingItemIndex === -1) {
-        // Thêm sản phẩm mới
         const newItem = {
           productId: product._id,
           productName: product.name,
-          price: Number(product.price),
+          price: Number(finalPrice),
+          originalPrice: Number(product.price),
           quantity: 1,
           image: product.image,
-          total: Number(product.price)
+          total: Number(finalPrice),
+          hasPromotion: !!promotion
         };
-        
         activeCart.items = [...activeCart.items, newItem];
-        
-        // Cập nhật tổng tiền
         const updatedCart = updateCartTotal(activeCart);
         newCarts[activeTabIndex] = updatedCart;
-        
         if (activeCart.items.length === 1) {
-          startTimer(activeCart.invoiceNumber);
+          startTimer(`${componentId}-${activeCart.id}`);
         }
       } else {
-        // Sản phẩm đã tồn tại, tăng số lượng nếu chưa đạt giới hạn tồn kho
         const currentItem = activeCart.items[existingItemIndex];
         if (currentItem.quantity < storage) {
           const updatedItems = [...activeCart.items];
@@ -155,23 +139,11 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
             quantity: currentItem.quantity + 1,
             total: (currentItem.quantity + 1) * currentItem.price
           };
-          
           activeCart.items = updatedItems;
-          
-          // Cập nhật tổng tiền
           const updatedCart = updateCartTotal(activeCart);
           newCarts[activeTabIndex] = updatedCart;
-        } else {
-          toast({
-            title: "Không thể thêm sản phẩm",
-            description: `Số lượng sản phẩm "${product.name}" đã đạt giới hạn tồn kho (${storage})`,
-            status: "warning",
-            duration: 2000,
-            isClosable: true,
-          });
         }
       }
-      
       return newCarts;
     });
   };
@@ -181,10 +153,8 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
       const newCarts = [...prevCarts];
       const activeCart = { ...newCarts[activeTabIndex] };
       const item = activeCart.items[itemIndex];
-      const storage = productStorage && productStorage[item.productId] ? 
-        Number(productStorage[item.productId]) : 5;
+      const storage = productStorage?.[item.productId] || 5;
       
-      // Kiểm tra số lượng tồn kho trước khi tăng
       if (item.quantity < storage && item.quantity < 100) {
         const updatedItems = [...activeCart.items];
         updatedItems[itemIndex] = {
@@ -192,14 +162,10 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
           quantity: item.quantity + 1,
           total: (item.quantity + 1) * item.price
         };
-        
         activeCart.items = updatedItems;
-        
-        // Cập nhật tổng tiền
         const updatedCart = updateCartTotal(activeCart);
         newCarts[activeTabIndex] = updatedCart;
       }
-      
       return newCarts;
     });
   };
@@ -217,14 +183,10 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
           quantity: item.quantity - 1,
           total: (item.quantity - 1) * item.price
         };
-        
         activeCart.items = updatedItems;
-        
-        // Cập nhật tổng tiền
         const updatedCart = updateCartTotal(activeCart);
         newCarts[activeTabIndex] = updatedCart;
       }
-      
       return newCarts;
     });
   };
@@ -233,35 +195,27 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
     setCarts(prevCarts => {
       const newCarts = [...prevCarts];
       const activeCart = { ...newCarts[activeTabIndex] };
-      
-      // Xóa sản phẩm khỏi giỏ hàng
       activeCart.items = activeCart.items.filter((_, index) => index !== itemIndex);
-      
-      // Cập nhật tổng tiền
       const updatedCart = updateCartTotal(activeCart);
       newCarts[activeTabIndex] = updatedCart;
-      
       if (activeCart.items.length === 0) {
-        stopTimer(activeCart.invoiceNumber);
+        stopTimer(`${componentId}-${activeCart.id}`);
       }
-      
       return newCarts;
     });
   };
 
   const createNewBill = () => {
     const newCartId = carts.length + 1;
-    const newInvoiceNumber = generateInvoiceId(carts.length);
-    
     setCarts([...carts, { 
       id: newCartId, 
       items: [], 
       note: "",
       paymentMethod: "Tiền mặt",
       paymentStatus: "Chưa thanh toán",
-      invoiceNumber: newInvoiceNumber,
       date: new Date(),
-      totalAmount: 0
+      totalAmount: 0,
+      appliedCoupon: null
     }]);
     setActiveTabIndex(carts.length);
   };
@@ -269,7 +223,7 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   const removeCart = (cartIndex) => {
     if (cartIndex === 0) return;
     const cartToRemove = carts[cartIndex];
-    stopTimer(cartToRemove.invoiceNumber);
+    stopTimer(`${componentId}-${cartToRemove.id}`);
     setCarts(prevCarts => {
       const newCarts = prevCarts.filter((_, index) => index !== cartIndex);
       if (activeTabIndex === cartIndex) {
@@ -284,10 +238,27 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   const setNote = (newNote) => {
     setCarts(prevCarts => {
       const newCarts = [...prevCarts];
-      newCarts[activeTabIndex] = {
-        ...newCarts[activeTabIndex],
-        note: newNote
-      };
+      newCarts[activeTabIndex] = { ...newCarts[activeTabIndex], note: newNote };
+      return newCarts;
+    });
+  };
+
+  const handleCouponApplied = (couponData) => {
+    setCarts(prevCarts => {
+      const newCarts = [...prevCarts];
+      const activeCart = { ...newCarts[activeTabIndex], appliedCoupon: couponData };
+      const updatedCart = updateCartTotal(activeCart);
+      newCarts[activeTabIndex] = updatedCart;
+      return newCarts;
+    });
+  };
+
+  const handleCouponRemoved = () => {
+    setCarts(prevCarts => {
+      const newCarts = [...prevCarts];
+      const activeCart = { ...newCarts[activeTabIndex], appliedCoupon: null };
+      const updatedCart = updateCartTotal(activeCart);
+      newCarts[activeTabIndex] = updatedCart;
       return newCarts;
     });
   };
@@ -295,36 +266,24 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
   const updatePaymentMethod = (method) => {
     setCarts(prevCarts => {
       const newCarts = [...prevCarts];
-      newCarts[activeTabIndex] = {
-        ...newCarts[activeTabIndex],
-        paymentMethod: method
-      };
+      newCarts[activeTabIndex] = { ...newCarts[activeTabIndex], paymentMethod: method };
       return newCarts;
     });
   };
 
-  useImperativeHandle(ref, () => {
-    return {
-      addToCart,
-      cleanup: () => {
-        carts.forEach(cart => {
-          stopTimer(cart.invoiceNumber);
-        });
-      }
-    };
-  });
+  const getFinalAmount = (cart) => {
+    return cart.totalAmount;
+  };
+
+  useImperativeHandle(ref, () => ({
+    addToCart,
+    cleanup: () => {
+      carts.forEach(cart => stopTimer(`${componentId}-${cart.id}`));
+    }
+  }));
 
   const handleActionButton = () => {
-    if (!isAuthenticated) {
-      toast({
-        title: "Cần đăng nhập",
-        description: "Vui lòng đăng nhập để thực hiện thanh toán",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
+    if (!isAuthenticated) return;
     const activeCart = carts[activeTabIndex];
     setQrActiveCart({...activeCart});
     if (activeCart.paymentMethod === "Chuyển khoản") {
@@ -343,7 +302,8 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
     setIsProcessing(true);
     const userId = user?._id; 
     const activeCart = carts[activeTabIndex];
-    stopTimer(activeCart.invoiceNumber);
+    stopTimer(`${componentId}-${activeCart.id}`);
+    
     const receiptData = {
       products: activeCart.items.map(item => ({
         productId: item.productId,
@@ -357,12 +317,14 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
       paymentMethod: activeCart.paymentMethod,
       paymentStatus: "Đã thanh toán",
       note: activeCart.note,
-      totalAmount: activeCart.totalAmount
+      totalAmount: getFinalAmount(activeCart),
+      originalAmount: activeCart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+      appliedCouponCode: activeCart.appliedCoupon?.coupon?.code || null
     };
     
     try {
       const result = await createReceipt(receiptData);
-      
+
       if (result.success) {
         setCarts(prevCarts => {
           const newCarts = [...prevCarts];
@@ -373,36 +335,32 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
             paymentMethod: "Tiền mặt",
             paymentStatus: "Chưa thanh toán",
             totalAmount: 0,
+            appliedCoupon: null,
             date: new Date(),
           };
           return newCarts;
         });
         
+        let toastMessage = `Hóa đơn ${result.data.invoiceNumber} đã được tạo`;
+        let toastDuration = 5000;
+        
+        // Kiểm tra nhiều cách để đảm bảo có coupon
+        if (result.coupon || result.data.coupon) {
+          const couponData = result.coupon || result.data.coupon;
+          toastMessage = `🎉 Tạo hóa đơn thành công!\n🎫 Tặng mã giảm giá: ${couponData.code} (${couponData.discountPercent}%)\n📅 Hạn sử dụng: ${new Date(couponData.expiryDate).toLocaleDateString('vi-VN')}`;
+          toastDuration = 10000;
+        }
+        
         toast({
           title: "Thanh toán thành công",
-          description: `Hóa đơn ${result.data.invoiceNumber || activeCart.invoiceNumber} đã được tạo`,
+          description: toastMessage,
           status: "success",
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        toast({
-          title: "Lỗi thanh toán",
-          description: result.message || "Không thể tạo hóa đơn",
-          status: "error",
-          duration: 5000,
+          duration: toastDuration,
           isClosable: true,
         });
       }
     } catch (error) {
       console.error("Lỗi khi tạo hóa đơn:", error);
-      toast({
-        title: "Lỗi hệ thống",
-        description: "Đã có lỗi xảy ra, vui lòng thử lại sau",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
     } finally {
       setIsProcessing(false);
     }
@@ -441,15 +399,15 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
                     <Badge
                       ml={2} 
                       colorScheme={
-                        getRemainingTime(cart.invoiceNumber)?.minutes < 1 ? "red" : 
-                        getRemainingTime(cart.invoiceNumber)?.minutes < 5 ? "orange" : "green"
+                        getRemainingTime(`${componentId}-${cart.id}`)?.minutes < 1 ? "red" : 
+                        getRemainingTime(`${componentId}-${cart.id}`)?.minutes < 5 ? "orange" : "green"
                       }
                       display="flex"
                       alignItems="center"
                     >
                       <FaClock size="10" style={{ marginRight: '4px' }} />
                       <TimeDisplay 
-                        invoiceId={cart.invoiceNumber} 
+                        invoiceId={`${componentId}-${cart.id}`} 
                         getRemainingTime={getRemainingTime}
                       />
                     </Badge>
@@ -491,6 +449,14 @@ const Receipt = forwardRef(({ isAuthenticated, user, productStorage }, ref) => {
                 bgHover={bgHover}
                 textColor={textColor}
                 productStorage={productStorage}
+              />
+              <CouponInput
+                totalAmount={cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)}
+                onCouponApplied={handleCouponApplied}
+                onCouponRemoved={handleCouponRemoved}
+                appliedCoupon={cart.appliedCoupon}
+                bgHover={bgHover}
+                textColor={textColor}
               />
               <CheckOut 
                 cart={cart}

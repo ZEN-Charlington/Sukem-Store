@@ -6,12 +6,10 @@ export const useReceiptStore = create((set) => ({
     setReceipts: (receipts) => set({ receipts }),
     
     createReceipt: async (receiptData) => {
-        // Validate required fields
         if (!receiptData.products || !receiptData.userId || !receiptData.paymentMethod) {
             return { success: false, message: "Thiếu thông tin hóa đơn" };
         }
         
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         if (!token) {
             return { success: false, message: "Bạn cần đăng nhập để thực hiện chức năng này." };
@@ -32,12 +30,17 @@ export const useReceiptStore = create((set) => ({
                 return { success: false, message: data.message };
             }
             
-            // Cập nhật state với hóa đơn mới
             set((state) => ({ receipts: [...state.receipts, data.data] }));
             const { fetchProducts } = useProductStore.getState();
             await fetchProducts();
 
-            return { success: true, message: "Hóa đơn mới đã được tạo.", data: data.data };
+            // Return đầy đủ response từ backend, bao gồm coupon
+            return {
+                success: true, 
+                message: data.message, // Message từ backend
+                data: data.data,
+                coupon: data.coupon // Thêm coupon từ backend
+            };
         } catch (error) {
             console.error("Lỗi khi tạo hóa đơn:", error);
             return { success: false, message: "Đã xảy ra lỗi khi tạo hóa đơn" };
@@ -45,7 +48,6 @@ export const useReceiptStore = create((set) => ({
     },
     
     fetchReceipts: async () => {
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         if (!token) {
             return { success: false, message: "Bạn cần đăng nhập để xem hóa đơn." };
@@ -70,7 +72,6 @@ export const useReceiptStore = create((set) => ({
     },
     
     getReceiptById: async (id) => {
-        // Lấy token từ localStorage
         const token = localStorage.getItem("token");
         if (!token) {
             return { success: false, message: "Bạn cần đăng nhập để xem chi tiết hóa đơn." };
@@ -91,7 +92,6 @@ export const useReceiptStore = create((set) => ({
         }
     },
     
-    // Nếu bạn cần thêm chức năng xóa hóa đơn
     deleteReceipt: async (receiptId) => {
         const token = localStorage.getItem("token");
         if (!token) {
@@ -109,7 +109,6 @@ export const useReceiptStore = create((set) => ({
             
             if (!data.success) return { success: false, message: data.message };
             
-            // Cập nhật UI ngay lập tức
             set((state) => ({ 
                 receipts: state.receipts.filter((receipt) => receipt._id !== receiptId) 
             }));

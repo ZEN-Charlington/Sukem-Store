@@ -19,7 +19,7 @@ export const generateBankQR = async (params) => {
       accountName: "LAM TIEU MINH",
       acqId: 970436,
       amount: amount,
-      addInfo: `Thanh toan ${invoiceNumber}`,
+      addInfo: `Thanh toan hoa don Sukem Store`,
       format: "text",
       template: "compact"
     };

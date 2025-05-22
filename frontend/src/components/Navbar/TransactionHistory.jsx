@@ -1,4 +1,3 @@
-// components/NavBar/TransactionHistory.jsx
 import React, { useEffect, useState } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody,
@@ -17,8 +16,9 @@ const TransactionHistory = ({ isOpen, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const noteBgColor = useColorModeValue('gray.50', 'gray.700');
+  const couponBgColor = useColorModeValue('green.50', 'green.900');
+  const couponTextColor = useColorModeValue('green.600', 'green.300');
 
-  // Không cần kiểm tra quyền để xem lịch sử giao dịch - cả worker và manager đều có thể xem
   useEffect(() => {
     if (isOpen) {
       loadTransactions();
@@ -41,7 +41,6 @@ const TransactionHistory = ({ isOpen, onClose }) => {
     }
   };
   
-  // Sắp xếp hóa đơn theo thời gian giảm dần (mới nhất lên đầu)
   const sortedReceipts = React.useMemo(() => {
     if (!receipts || receipts.length === 0) return [];
     return [...receipts].sort((a, b) => {
@@ -49,8 +48,7 @@ const TransactionHistory = ({ isOpen, onClose }) => {
     });
   }, [receipts]);
 
-  // Hiển thị danh sách sản phẩm và ghi chú
-  const renderProducts = (products, note) => {
+  const renderProducts = (products, note, appliedCouponCode) => {
     if (!products || products.length === 0) return "Không có sản phẩm";
     
     return (
@@ -86,11 +84,18 @@ const TransactionHistory = ({ isOpen, onClose }) => {
                   </Tbody>
                 </Table>
                 
-                {/* Hiển thị ghi chú */}
                 {note && (
                   <Box mt={3} p={2} bg={noteBgColor} borderRadius="md">
                     <Text fontWeight="medium" mb={1}>Ghi chú:</Text>
                     <Text>{note}</Text>
+                  </Box>
+                )}
+
+                {appliedCouponCode && (
+                  <Box mt={2} p={2} bg={couponBgColor} borderRadius="md" borderLeft="4px solid" borderColor="green.400">
+                    <Text fontSize="sm" color={couponTextColor} fontWeight="medium">
+                      🎫 Có sử dụng coupon giảm giá: {appliedCouponCode}
+                    </Text>
                   </Box>
                 )}
               </Box>
@@ -101,7 +106,6 @@ const TransactionHistory = ({ isOpen, onClose }) => {
     );
   };
 
-  // Hiển thị badge cho phương thức thanh toán
   const getPaymentMethodBadge = (method) => {
     let colorScheme;
     switch (method) {
@@ -162,7 +166,7 @@ const TransactionHistory = ({ isOpen, onClose }) => {
                         <Td isNumeric fontWeight="bold" style={{ whiteSpace: "nowrap" }}>
                           {formatVND(receipt.totalAmount)}
                         </Td>
-                        <Td width="300px">{renderProducts(receipt.products, receipt.note)}</Td>
+                        <Td width="300px">{renderProducts(receipt.products, receipt.note, receipt.appliedCouponCode)}</Td>
                       </Tr>
                     ))
                   ) : (

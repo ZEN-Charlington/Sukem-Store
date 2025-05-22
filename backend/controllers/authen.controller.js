@@ -7,16 +7,13 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-// Lấy các biến từ .env
 const EMAIL_USERNAME = process.env.EMAIL_USERNAME || "minhlam1610.work@gmail.com";
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "jhnn nfcl yygn npxw";
 const EMAIL_FROM = process.env.EMAIL_FROM || "minhlam1610.work@gmail.com";
 const JWT_SECRET = process.env.JWT_SECRET || "raeT";
 const JWT_EXPIRE = process.env.JWT_EXPIRE || "4h";
-const RESET_TOKEN_EXPIRE = process.env.RESET_TOKEN_EXPIRE || 15; // phút
+const RESET_TOKEN_EXPIRE = process.env.RESET_TOKEN_EXPIRE || 15;
 
-// Cấu hình nodemailer
 const transporter = nodemailer.createTransport({
   service: "gmail", 
   auth: {
@@ -25,14 +22,9 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-/**
- * Đăng ký người dùng mới
- * Mặc định quyền là "worker"
- */
 export const registerUser = async (req, res) => {
   const { name, email, password, role = "worker" } = req.body;
   
-  // Kiểm tra đầy đủ thông tin
   if (!name || !email || !password) {
     return res.status(400).json({
       success: false,
@@ -41,14 +33,11 @@ export const registerUser = async (req, res) => {
   }
   
   try {
-    // Hash mật khẩu
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    // Chỉ cho phép tạo người dùng với vai trò worker nếu không phải admin
     const userRole = role === "manager" && req.user?.role !== "manager" ? "worker" : role;
     
-    // Tạo và lưu user mới
     const newUser = new User({ 
       name, 
       email, 
@@ -69,12 +58,10 @@ export const registerUser = async (req, res) => {
       }
     });
   } catch (err) {
-    // Mongoose validation error
     if (err.name === "ValidationError") {
       const messages = Object.values(err.errors).map(e => e.message);
       return res.status(400).json({ success: false, message: messages.join(", ") });
     }
-    // Duplicate key (email đã tồn tại)
     if (err.code === 11000 && err.keyPattern.email) {
       return res.status(400).json({ success: false, message: "Email đã tồn tại." });
     }
@@ -83,10 +70,6 @@ export const registerUser = async (req, res) => {
   }
 };
 
-/**
- * Đăng nhập người dùng
- * Tạo JWT token bao gồm thông tin role
- */
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -104,7 +87,6 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "Sai mật khẩu." });
     }
     
-    // Tạo JWT token bao gồm userId, email và role
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
@@ -128,10 +110,6 @@ export const loginUser = async (req, res) => {
   }
 };
 
-/**
- * Xác minh token JWT
- * Trả về thông tin người dùng nếu token hợp lệ
- */
 export const verifyToken = async (req, res) => {
   try {
     // Middleware protect đã xác thực token và gán req.user
@@ -158,10 +136,6 @@ export const verifyToken = async (req, res) => {
   }
 };
 
-/**
- * Gửi email quên mật khẩu
- * Tạo mã xác minh 6 chữ số và gửi qua email
- */
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
   
@@ -175,21 +149,16 @@ export const forgotPassword = async (req, res) => {
       });
     }
     
-    // Tạo mã xác minh ngẫu nhiên 6 chữ số
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Hash mã để lưu vào database
     const resetToken = crypto
       .createHash("sha256")
       .update(resetCode)
       .digest("hex");
-    
-    // Lưu token và thời gian hết hạn vào database
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpire = Date.now() + RESET_TOKEN_EXPIRE * 60 * 1000; // RESET_TOKEN_EXPIRE phút
     await user.save();
     
-    // Nội dung email
     const mailOptions = {
       from: EMAIL_FROM,
       to: user.email,

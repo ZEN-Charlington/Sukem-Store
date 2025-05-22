@@ -19,12 +19,15 @@ const auditSchema = new mongoose.Schema({
   action: {
     type: String,
     required: true,
-    enum: ['CREATE', 'UPDATE', 'DELETE', 'UPDATE_STORAGE'], // Thêm UPDATE_STORAGE
+    enum: ['CREATE', 'UPDATE', 'DELETE', 
+    'UPDATE_STORAGE', 'CREATE_PROMOTION', 'UPDATE_PROMOTION', 'DELETE_PROMOTION', 
+    'USE_COUPON', 'DELETE_COUPON'
+    ]
   },
   productId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
-    required: true,
+    required: false,
   },
   timestamp: {
     type: Date,

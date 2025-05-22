@@ -65,10 +65,10 @@ const HomePage = ({ searchKeyword = "" }) => {
           
           <SimpleGrid
             columns={{
-              base: 4,
+              base: 3,
               sm: 2,
               md: 3,
-              lg: 4 
+              lg: 3 
             }}
             spacing={4}
             w={"full"}

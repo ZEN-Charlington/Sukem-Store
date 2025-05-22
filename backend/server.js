@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import authenRoutes from "./routes/authen.route.js";
 import auditRoutes from "./routes/audit.route.js";
 import hoadonRoutes from "./routes/hoadon.route.js";
+import promotionRoutes from "./routes/promotion.route.js";
+import couponRoutes from "./routes/coupon.route.js";
 import bodyParser from 'body-parser';
 import cors from "cors";
 
@@ -30,6 +32,10 @@ app.use("/api/authen", authenRoutes);
 app.use("/api/invoices", hoadonRoutes)
 
 app.use("/api/products", productRoutes);
+
+app.use("/api/promotions", promotionRoutes);
+
+app.use("/api/coupons", couponRoutes);
 
 app.listen(PORT, () => {
     connectDB();

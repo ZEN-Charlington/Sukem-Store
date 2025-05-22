@@ -1,34 +1,10 @@
 import { 
-    Box, 
-    Heading, 
-    HStack, 
-    Image, 
-    Text, 
-    useColorModeValue, 
-    IconButton, 
-    useToast, 
-    Modal,
-    ModalOverlay, 
-    ModalContent, 
-    ModalCloseButton, 
-    useDisclosure, 
-    ModalHeader, 
-    ModalBody, 
-    VStack, 
-    Input, 
-    ModalFooter,
-    Button,
-    FormControl,
-    FormLabel,
-    InputGroup,
-    InputRightElement,
-    Alert,
-    AlertIcon,
-    Badge,
+    Box, Heading, HStack, Image, Text, useColorModeValue, IconButton, useToast, Modal, ModalOverlay, ModalContent, ModalCloseButton, useDisclosure, ModalHeader, ModalBody, VStack, Input, ModalFooter, Button, FormControl, FormLabel, InputGroup, InputRightElement, Alert, AlertIcon, Badge,
 } from "@chakra-ui/react";
 import { DeleteIcon, EditIcon } from "@chakra-ui/icons";
 import { FiAlertCircle } from "react-icons/fi";
 import { useProductStore } from "../../store/product";
+import { usePromotionStore } from "../../store/promotion";
 import { useAuthStore } from "../../store/user"; 
 import { useState, useEffect, memo } from "react";
 import { formatVND, formatNumberWithCommas } from '../../Utils/FormatUtils';
@@ -37,10 +13,12 @@ const LOW_STOCK_THRESHOLD = 10;
 
 const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
     const { products, deleteProduct, updateProduct } = useProductStore();
+    const { getPromotionByProduct } = usePromotionStore();
     const { hasPermission } = useAuthStore();
     
     const currentProduct = products.find(p => p._id === product._id) || product;
     const [updatedProduct, setUpdatedProduct] = useState(currentProduct);
+    const [promotion, setPromotion] = useState(null);
     
     const textColor = useColorModeValue("gray.600", "gray.300");
     const bgCard = useColorModeValue("white", "gray.800");
@@ -48,6 +26,12 @@ const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
     const hoverBg = useColorModeValue("gray.200", "gray.700");  
     const disabledBg = useColorModeValue("gray.100", "gray.700");
     const disabledTextColor = useColorModeValue("gray.400", "gray.500");
+    
+    // Di chuyển tất cả useColorModeValue lên đây
+    const lowStockBg = useColorModeValue("orange.100", "orange.900");
+    const lowStockColor = useColorModeValue("orange.600", "orange.200");
+    const outOfStockBg = useColorModeValue("red.100", "red.900");
+    const outOfStockColor = useColorModeValue("red.600", "red.200");
 
     const toast = useToast();
     const { isOpen, onOpen, onClose } = useDisclosure();
@@ -56,10 +40,29 @@ const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
     
     const isLowStock = (currentProduct.storage || 0) <= LOW_STOCK_THRESHOLD && (currentProduct.storage || 0) > 0;
     const isOutOfStock = (currentProduct.storage || 0) === 0;
+
+    useEffect(() => {
+        if (!currentProduct._id) return;
+        
+        const fetchPromotion = async () => {
+            const result = await getPromotionByProduct(currentProduct._id);
+            if (result.success && result.data) {
+                setPromotion(result.data);
+            } else {
+                setPromotion(null);
+            }
+        };
+        fetchPromotion();
+    }, [currentProduct._id, getPromotionByProduct]);
     
     useEffect(() => {
         setUpdatedProduct(currentProduct);
     }, [currentProduct, isOpen]);
+
+    const getPromotionPrice = () => {
+        if (!promotion) return currentProduct.price;
+        return Math.round(currentProduct.price * (1 - promotion.discountPercent / 100));
+    };
 
     const handleDeleteProduct = async (pid) => {
         const { success, message } = await deleteProduct(pid);
@@ -157,6 +160,22 @@ const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
                     opacity={isOutOfStock ? 0.7 : 1}
                 />
                 
+                {promotion && (
+                    <Badge
+                        position="absolute"
+                        top="2"
+                        left="2"
+                        colorScheme="red"
+                        px={2}
+                        py={1}
+                        borderRadius="md"
+                        bg="red.500"
+                        color="white"
+                    >
+                        -{promotion.discountPercent}%
+                    </Badge>
+                )}
+                
                 {isLowStock && (
                     <Badge
                         position="absolute"
@@ -166,8 +185,8 @@ const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
                         px={2}
                         py={1}
                         borderRadius="md"
-                        bg={useColorModeValue("orange.100", "orange.900")}
-                        color={useColorModeValue("orange.600", "orange.200")}
+                        bg={lowStockBg}
+                        color={lowStockColor}
                     >
                         Sắp hết hàng
                     </Badge>
@@ -182,37 +201,59 @@ const ProductCard = memo(({ product, compact = false, onAddToCart }) => {
                         px={2}
                         py={1}
                         borderRadius="md"
-                        bg={useColorModeValue("red.100", "red.900")}
-                        color={useColorModeValue("red.600", "red.200")}
+                        bg={outOfStockBg}
+                        color={outOfStockColor}
                     >
                         Hết hàng
                     </Badge>
                 )}
             </Box>
             
-            <Box p={compact ? 3 : 4} height={compact ? "auto" : "auto"}>
-                <Heading 
-                    as="h3" 
-                    size={compact ? "sm" : "md"} 
-                    mb={2} 
-                    noOfLines={2} 
-                    lineHeight="shorter"
-                    color={isOutOfStock ? disabledTextColor : "inherit"}
-                >
-                    {currentProduct.name}
-                </Heading>
-                
-                <Text 
-                    fontWeight="bold" 
-                    fontSize={compact ? "lg" : "xl"} 
-                    color={isOutOfStock ? disabledTextColor : textColor} 
-                    mb={1}
-                >
-                    {formatVND(currentProduct.price || 0)}
-                </Text>
+            <Box p={compact ? 3 : 4} height={compact ? "auto" : "140px"} display="flex" flexDirection="column" justifyContent="space-between">
+                <VStack spacing={2} align="stretch" flex="1">
+                    <Heading 
+                        as="h3" 
+                        size={compact ? "sm" : "md"} 
+                        noOfLines={2} 
+                        lineHeight="shorter"
+                        color={isOutOfStock ? disabledTextColor : "inherit"}
+                        minHeight={compact ? "32px" : "40px"}
+                    >
+                        {currentProduct.name}
+                    </Heading>
+                    
+                    {promotion ? (
+                        <VStack spacing={1} align="start" flex="1" justify="center">
+                            <Text 
+                                fontWeight="bold" 
+                                fontSize={compact ? "lg" : "xl"} 
+                                color="red.500"
+                            >
+                                {formatVND(getPromotionPrice())}
+                            </Text>
+                            <Text 
+                                fontSize={compact ? "sm" : "md"} 
+                                color="gray.500"
+                                textDecoration="line-through"
+                            >
+                                {formatVND(currentProduct.price || 0)}
+                            </Text>
+                        </VStack>
+                    ) : (
+                        <Box flex="1" display="flex" alignItems="center">
+                            <Text 
+                                fontWeight="bold" 
+                                fontSize={compact ? "lg" : "xl"} 
+                                color={isOutOfStock ? disabledTextColor : textColor}
+                            >
+                                {formatVND(currentProduct.price || 0)}
+                            </Text>
+                        </Box>
+                    )}
+                </VStack>
                 
                 {isManager && (
-                    <HStack spacing={2} justifyContent="flex-end">
+                    <HStack spacing={2} justifyContent="flex-end" mt={2}>
                         <IconButton 
                             icon={<EditIcon />}
                             colorScheme="blue"
